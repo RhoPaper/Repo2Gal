@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repo2gal.dev/schemas/assets.schema.json",
+  "title": "Assets Config Schema",
+  "description": "资源配置文件，管理所有多媒体资产的占位符路径映射",
+  "type": "object",
+  "required": ["version", "characters", "backgrounds", "bgm", "se", "cg", "ui_theme"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "characters": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": {
+          "type": "object",
+          "required": ["name", "display_name", "sprites"],
+          "properties": {
+            "name": { "type": "string" },
+            "display_name": { "type": "string" },
+            "description": { "type": "string" },
+            "sprites": {
+              "type": "object",
+              "minProperties": 1,
+              "patternProperties": {
+                "^[a-z][a-z0-9_]*$": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "backgrounds": {
+      "type": "object",
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "bgm": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "se": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "cg": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9_]*$": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "ui_theme": {
+      "type": "object",
+      "required": ["textbox", "choice_frame", "font_regular"],
+      "properties": {
+        "textbox": { "type": "string" },
+        "choice_frame": { "type": "string" },
+        "name_tag": { "type": "string" },
+        "font_regular": { "type": "string" },
+        "font_bold": { "type": "string" },
+        "font_code": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

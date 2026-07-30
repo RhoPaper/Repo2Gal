@@ -1,0 +1,85 @@
+{
+  "version": "2.0-r1",
+  "webgal_version": "4.x",
+  "description": "story_data.json Action 到 WebGAL .txt 语法的映射关系。含 show_code_board 三层降级策略。由 Compiler 开发者调研 WebGAL 官方文档后填写完整。",
+  "documentation_url": "https://docs.openwebgal.com/",
+  "mappings": [
+    {
+      "story_action": "set_bg",
+      "webgal_command": "changeBg:{target}",
+      "notes": "target 来自 assets_config.json backgrounds key"
+    },
+    {
+      "story_action": "set_bgm",
+      "webgal_command": "bgm:{target}",
+      "notes": "volume / fade_in 参数需查阅 WebGAL 是否支持内联设置。若不支持，分拆为独立指令。"
+    },
+    {
+      "story_action": "set_se",
+      "webgal_command": "se:{target}",
+      "notes": "格式限定为 .mp3 或 .ogg，禁止 .wav"
+    },
+    {
+      "story_action": "show_char",
+      "webgal_command": "changeFigure:{target}:{emotion} -{position}",
+      "notes": "position: left -> -L, center -> (默认), right -> -R。具体语法以 WebGAL 文档为准。"
+    },
+    {
+      "story_action": "hide_char",
+      "webgal_command": "changeFigure:{target}:null",
+      "notes": "transition 参数通过额外的 fade 指令处理。"
+    },
+    {
+      "story_action": "dialogue",
+      "webgal_command": "常规对话: {speaker}:{text} | 旁白(speaker=null): {text}",
+      "notes": "旁白在 WebGAL 中以无前缀纯文本行表示。emotion 通过 show_char 的预先设置实现。"
+    },
+    {
+      "story_action": "show_code_board",
+      "strategy": "三层降级 (L1→L2→L3)",
+      "fallback": {
+        "level": 1,
+        "description": "当前 Compiler 默认使用 L1 策略。若失败自动降级。"
+      },
+      "webgal_command_l1": "利用 WebGAL 文本样式或 HTML div 组件渲染代码块：<div class=\"code-board\"><h3>{title}</h3><pre class=\"code-{language}\">{code_snippet}</pre><p>{explanation}</p></div>",
+      "webgal_command_l2": "纯文本降级：\n:【{title}】\n:（{explanation}）\n:\n:{code_snippet}\n:\n",
+      "webgal_command_l3": "摘要省略：\n:（此处展示 {language} 代码，详见下方解释……）\n:{explanation}\n",
+      "notes": "L1 需确认 WebGAL 对 HTML/class 注入的支持程度。若 WebGAL 仅支持纯文本，则直接从 L2 起步。L3 为最终兜底。"
+    },
+    {
+      "story_action": "transition",
+      "webgal_command": "transition:{effect}",
+      "notes": "effect 名称需与 WebGAL 内置过渡效果名对齐。duration 映射需确认 WebGAL 单位。"
+    },
+    {
+      "story_action": "wait",
+      "webgal_command": "wait:{duration}",
+      "notes": "确认 WebGAL wait 单位（秒/毫秒）并做换算。"
+    }
+  ],
+  "compiler_decomposition": {
+    "description": "Compiler 读取 story_data.json 的 segments[]、choices[]、endings[] 后的处理逻辑",
+    "rules": [
+      {
+        "input": "choices[] entry",
+        "output": "在 after_segment 对应的 .txt 结尾生成 WebGAL choose 指令，每个 option 指向 label:segment_{next_segment}，并在跳转后第一条执行 setVar",
+        "example": "choose:选项A:探索目录结构->segment_seg_004|选项B:查看魔法核心->segment_seg_005"
+      },
+      {
+        "input": "endings[] entry",
+        "output": "在 after_segment 对应的 .txt 结尾展示 ending.text（对话形式）→ end 指令",
+        "example": "{ending.title}\n{ending.text}\nend"
+      },
+      {
+        "input": "segments[] sequential flow",
+        "output": "若无 choice 或 ending 声明插入，自动生成 jump -> segment_{next_segment_id}",
+        "example": "jump:segment_seg_002"
+      },
+      {
+        "input": "variables",
+        "output": "在 start.txt 中初始化所有变量: setVar:path=null, setVar:quiz_score=0",
+        "example": "setVar:path=null"
+      }
+    ]
+  }
+}

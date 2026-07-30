@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repo2gal.dev/schemas/context.schema.json",
+  "title": "Context JSON Schema",
+  "description": "Data Pipeline 产出的标准化上下文，作为 LLM Processor 的唯一输入合约",
+  "type": "object",
+  "required": ["version", "repo", "structure", "source_code", "history", "community", "metadata"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "repo": {
+      "type": "object",
+      "required": ["url", "name", "owner", "language"],
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "name": { "type": "string" },
+        "owner": { "type": "string" },
+        "description": { "type": "string" },
+        "topics": { "type": "array", "items": { "type": "string" } },
+        "stars": { "type": "integer", "minimum": 0 },
+        "forks": { "type": "integer", "minimum": 0 },
+        "language": { "type": "string" },
+        "license": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "structure": {
+      "type": "object",
+      "required": ["tree", "key_directories"],
+      "properties": {
+        "tree": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "type"],
+            "properties": {
+              "path": { "type": "string" },
+              "type": { "enum": ["file", "directory"] },
+              "size_bytes": { "type": "integer", "minimum": 0 },
+              "summary": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "key_directories": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["path", "purpose"],
+            "properties": {
+              "path": { "type": "string" },
+              "purpose": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "source_code": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "content"],
+        "properties": {
+          "path": { "type": "string" },
+          "content": { "type": "string" },
+          "size_bytes": { "type": "integer", "minimum": 0 },
+          "highlights": { "type": "array", "items": { "type": "string" } },
+          "truncated": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "history": {
+      "type": "object",
+      "required": ["total_commits", "commits", "milestones", "contributors"],
+      "properties": {
+        "total_commits": { "type": "integer", "minimum": 0 },
+        "commits_truncated": { "type": "boolean" },
+        "commits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["sha", "author", "date", "message", "type"],
+            "properties": {
+              "sha": { "type": "string" },
+              "author": { "type": "string" },
+              "author_email": { "type": "string", "format": "email" },
+              "date": { "type": "string", "format": "date-time" },
+              "message": { "type": "string" },
+              "type": { "enum": ["feat", "fix", "docs", "refactor", "perf", "test", "chore", "ci", "release"] },
+              "breaking": { "type": "boolean" },
+              "files_changed": { "type": "integer", "minimum": 0 },
+              "impact_score": { "type": "integer", "minimum": 0, "maximum": 10 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "milestones": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["version", "date", "title"],
+            "properties": {
+              "version": { "type": "string" },
+              "date": { "type": "string", "format": "date-time" },
+              "title": { "type": "string" },
+              "description": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "contributors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "commits", "role"],
+            "properties": {
+              "name": { "type": "string" },
+              "email": { "type": "string", "format": "email" },
+              "commits": { "type": "integer", "minimum": 0 },
+              "role": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "community": {
+      "type": "object",
+      "required": ["issues", "pull_requests"],
+      "properties": {
+        "issues": {
+          "type": "object",
+          "required": ["open_count", "closed_count"],
+          "properties": {
+            "open_count": { "type": "integer", "minimum": 0 },
+            "closed_count": { "type": "integer", "minimum": 0 },
+            "notable_labels": { "type": "array", "items": { "type": "string" } },
+            "notable_issues": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "required": ["number", "title", "state"],
+                "properties": {
+                  "number": { "type": "integer" },
+                  "title": { "type": "string" },
+                  "state": { "enum": ["open", "closed"] },
+                  "labels": { "type": "array", "items": { "type": "string" } }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "pull_requests": {
+          "type": "object",
+          "required": ["open_count", "merged_count"],
+          "properties": {
+            "open_count": { "type": "integer", "minimum": 0 },
+            "merged_count": { "type": "integer", "minimum": 0 },
+            "notable_prs": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "required": ["number", "title", "state"],
+                "properties": {
+                  "number": { "type": "integer" },
+                  "title": { "type": "string" },
+                  "state": { "enum": ["open", "merged", "closed"] },
+                  "author": { "type": "string" }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["fetched_at", "pipeline_version", "tool_versions"],
+      "properties": {
+        "fetched_at": { "type": "string", "format": "date-time" },
+        "pipeline_version": { "type": "string" },
+        "tool_versions": {
+          "type": "object",
+          "required": ["repo2txt", "github_analyzer"],
+          "properties": {
+            "repo2txt": { "type": "string" },
+            "github_analyzer": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

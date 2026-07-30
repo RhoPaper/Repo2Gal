@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repo2gal.dev/schemas/story.schema.json",
+  "title": "Story Data Schema",
+  "description": "LLM 产出的线性叙事数据。LLM 只负责线性编排，条件分支由 Compiler 后编译处理。",
+  "type": "object",
+  "required": ["version", "mode", "repo_url", "meta", "segments", "choices", "endings", "variables"],
+  "properties": {
+    "version": { "type": "string", "const": "2.0" },
+    "mode": { "type": "string", "enum": ["overview", "quick_start", "immersive_history"] },
+    "repo_url": { "type": "string", "format": "uri" },
+    "meta": {
+      "type": "object",
+      "required": ["title", "author", "generated_at"],
+      "properties": {
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "estimated_playtime_minutes": { "type": "number", "minimum": 0 },
+        "total_segments": { "type": "integer", "minimum": 1 },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "segments": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/segment" }
+    },
+    "choices": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/choice" }
+    },
+    "endings": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/ending" }
+    },
+    "variables": {
+      "type": "object",
+      "description": "全局变量声明（所有 choice.set_var 使用的 key 必须在此声明初始值）",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "segment": {
+      "type": "object",
+      "required": ["id", "chapter", "actions"],
+      "properties": {
+        "id": { "type": "string" },
+        "chapter": { "type": "integer", "minimum": 1 },
+        "chapter_title": { "type": "string" },
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/inline_action" }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "inline_action": {
+      "type": "object",
+      "required": ["type"],
+      "oneOf": [
+        {
+          "description": "set_bg: 切换背景",
+          "properties": {
+            "type": { "const": "set_bg" },
+            "target": { "type": "string" }
+          },
+          "required": ["type", "target"],
+          "additionalProperties": false
+        },
+        {
+          "description": "set_bgm: 切换背景音乐",
+          "properties": {
+            "type": { "const": "set_bgm" },
+            "target": { "type": "string" },
+            "loop": { "type": "boolean", "default": true },
+            "volume": { "type": "number", "minimum": 0, "maximum": 1, "default": 1.0 },
+            "fade_in_ms": { "type": "integer", "minimum": 0, "default": 0 }
+          },
+          "required": ["type", "target"],
+          "additionalProperties": false
+        },
+        {
+          "description": "set_se: 播放音效",
+          "properties": {
+            "type": { "const": "set_se" },
+            "target": { "type": "string" },
+            "volume": { "type": "number", "minimum": 0, "maximum": 1, "default": 1.0 }
+          },
+          "required": ["type", "target"],
+          "additionalProperties": false
+        },
+        {
+          "description": "show_char: 角色登场",
+          "properties": {
+            "type": { "const": "show_char" },
+            "target": { "type": "string" },
+            "emotion": { "type": "string" },
+            "position": { "enum": ["left", "center", "right"] }
+          },
+          "required": ["type", "target", "emotion", "position"],
+          "additionalProperties": false
+        },
+        {
+          "description": "hide_char: 角色退场",
+          "properties": {
+            "type": { "const": "hide_char" },
+            "target": { "type": "string" },
+            "transition": { "enum": ["fade", "instant", "slide_left", "slide_right"], "default": "fade" }
+          },
+          "required": ["type", "target"],
+          "additionalProperties": false
+        },
+        {
+          "description": "dialogue: 角色对话或旁白",
+          "properties": {
+            "type": { "const": "dialogue" },
+            "speaker": { "type": ["string", "null"] },
+            "emotion": { "type": "string" },
+            "text": { "type": "string" }
+          },
+          "required": ["type", "speaker", "text"],
+          "additionalProperties": false
+        },
+        {
+          "description": "show_code_board: 代码展示板（Compiler 按降级策略渲染）",
+          "properties": {
+            "type": { "const": "show_code_board" },
+            "title": { "type": "string" },
+            "code_snippet": { "type": "string" },
+            "language": { "type": "string" },
+            "explanation": { "type": "string" },
+            "line_highlight": { "type": "array", "items": { "type": "integer", "minimum": 1 } }
+          },
+          "required": ["type", "title", "code_snippet", "language", "explanation"],
+          "additionalProperties": false
+        },
+        {
+          "description": "transition: 场景过渡效果",
+          "properties": {
+            "type": { "const": "transition" },
+            "effect": { "enum": ["fade", "fade_to_black", "dissolve", "wipe_left", "wipe_right", "none"] },
+            "duration": { "type": "number", "minimum": 0, "default": 1.0 }
+          },
+          "required": ["type", "effect"],
+          "additionalProperties": false
+        },
+        {
+          "description": "wait: 时间停顿",
+          "properties": {
+            "type": { "const": "wait" },
+            "duration": { "type": "number", "minimum": 0 }
+          },
+          "required": ["type", "duration"],
+          "additionalProperties": false
+        }
+      ]
+    },
+
+    "choice": {
+      "type": "object",
+      "required": ["id", "after_segment", "prompt", "options"],
+      "properties": {
+        "id": { "type": "string" },
+        "after_segment": { "type": "string", "description": "在此 segment 之后弹出选择肢" },
+        "prompt": { "type": "string" },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["text", "next_segment"],
+            "properties": {
+              "text": { "type": "string" },
+              "next_segment": { "type": "string", "description": "选中后跳转到的 segment.id" },
+              "set_var": { "type": "object", "additionalProperties": true },
+              "se": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "ending": {
+      "type": "object",
+      "required": ["id", "after_segment", "ending_type", "title", "text"],
+      "properties": {
+        "id": { "type": "string" },
+        "after_segment": { "type": "string", "description": "在此 segment 之后触发结局" },
+        "ending_type": { "enum": ["good", "true", "normal", "bad"] },
+        "title": { "type": "string" },
+        "text": { "type": "string" },
+        "cg": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
