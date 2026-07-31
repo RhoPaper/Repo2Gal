@@ -3,4 +3,5 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 output/
+.repo2gal/
 .pytest_cache/

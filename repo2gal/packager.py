@@ -7,6 +7,7 @@ npm 上 `webgal` 是 0.0.0 占位包，OpenWebGAL/WebGAL-Server 已于 2022 年�
 
 from __future__ import annotations
 
+import hashlib
 import io
 import os
 import shutil
@@ -15,7 +16,12 @@ from pathlib import Path
 
 import requests
 
-TEMPLATE_RELEASE = "https://api.github.com/repos/OpenWebGAL/WebGAL/releases/latest"
+WEBGAL_VERSION = "4.6.2"
+WEBGAL_ASSET = f"WebGAL-{WEBGAL_VERSION}-web.zip"
+WEBGAL_URL = (
+    f"https://github.com/OpenWebGAL/WebGAL/releases/download/{WEBGAL_VERSION}/{WEBGAL_ASSET}"
+)
+WEBGAL_SHA256 = "299a18b8e0e4a9bc48e659fe50a3a640c71743ed11647acb81a9384149ff9355"
 
 
 class PackageError(RuntimeError):
@@ -29,32 +35,20 @@ def cache_dir() -> Path:
 
 def ensure_template(*, log=lambda _m: None) -> Path:
     """下载并缓存 WebGAL 发行版模板，返回模板根目录。"""
-    cache = cache_dir()
-    marker = cache / "template" / "index.html"
+    dest = cache_dir() / f"webgal-{WEBGAL_VERSION}"
+    marker = dest / "index.html"
     if marker.exists():
         log(f"复用已缓存模板 {marker.parent}")
         return marker.parent
 
-    log("获取 WebGAL 最新发行版信息")
-    meta = requests.get(TEMPLATE_RELEASE, timeout=30)
-    if not meta.ok:
-        raise PackageError(f"无法获取 WebGAL 发行版信息：HTTP {meta.status_code}")
-    data = meta.json()
-
-    asset = next(
-        (a for a in data.get("assets", []) if a["name"].endswith("-web.zip")),
-        None,
-    )
-    if not asset:
-        raise PackageError("最新发行版里找不到 *-web.zip 资产")
-
-    size_mb = asset["size"] / 1024 / 1024
-    log(f"下载 {asset['name']}（{size_mb:.1f}MB，仅首次）")
-    blob = requests.get(asset["browser_download_url"], timeout=600)
+    log(f"下载固定版本 {WEBGAL_ASSET}（仅首次）")
+    blob = requests.get(WEBGAL_URL, timeout=600)
     if not blob.ok:
         raise PackageError(f"模板下载失败：HTTP {blob.status_code}")
+    digest = hashlib.sha256(blob.content).hexdigest()
+    if digest != WEBGAL_SHA256:
+        raise PackageError(f"模板 SHA-256 不匹配：期望 {WEBGAL_SHA256}，实际 {digest}")
 
-    dest = cache / "template"
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True, exist_ok=True)

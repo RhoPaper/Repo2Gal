@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 import click
 
-from .fetcher import FetchError, GitHubClient, fetch_context, parse_repo
+from .fetcher import FetchError, fetch_context, parse_repo
 from .generator import GenerationError, build_cast, build_prompt, call_llm
 from .packager import PackageError, package
 from .validator import sanitize
@@ -29,14 +30,35 @@ def _die(msg: str, code: int) -> None:
 @click.command()
 @click.argument("repo")
 @click.option("--output", "-o", default=None, type=click.Path(), help="产物目录，默认 ./output/<repo>")
-@click.option("--model", default=None, help="模型名，默认取 REPO2GAL_MODEL 或 gpt-4o")
+@click.option("--model", default=None, help="模型名，默认取 REPO2GAL_MODEL 或 deepseek-v4-pro")
 @click.option("--base-url", default=None, help="OpenAI 兼容端点，默认取 REPO2GAL_BASE_URL")
-@click.option("--threads", default=12, show_default=True, help="抓取的热门 Issue/PR 条数")
+@click.option("--threads", default=12, show_default=True, help="从全量备份中选入上下文的热门讨论数")
+@click.option(
+    "--backup-dir",
+    type=click.Path(),
+    default=None,
+    help="python-github-backup 原始数据目录，默认 .repo2gal/backups/<owner>",
+)
+@click.option("--reuse-backup", is_flag=True, help="不联网，复用 --backup-dir 中的已有备份")
+@click.option("--organization", is_flag=True, help="目标 owner 是 GitHub Organization")
 @click.option("--dry-run", is_flag=True, help="只抓数据并打印 prompt，不调用 LLM")
 @click.option("--script", type=click.Path(exists=True), help="跳过 LLM，改用现成脚本文件")
 @click.option("--save-prompt", type=click.Path(), help="把 prompt 存盘，便于调试")
 @click.option("--strict", is_flag=True, help="validator 有降级即判失败")
-def main(repo, output, model, base_url, threads, dry_run, script, save_prompt, strict):
+def main(
+    repo,
+    output,
+    model,
+    base_url,
+    threads,
+    backup_dir,
+    reuse_backup,
+    organization,
+    dry_run,
+    script,
+    save_prompt,
+    strict,
+):
     """把 GitHub 仓库变成可游玩的 WebGAL 视觉小说。
 
     \b
@@ -50,13 +72,26 @@ def main(repo, output, model, base_url, threads, dry_run, script, save_prompt, s
         _die(str(exc), 2)
 
     out_dir = Path(output) if output else Path("output") / name
+    raw_dir = Path(backup_dir) if backup_dir else Path(".repo2gal") / "backups" / owner
 
     # --- 1. 抓取 ---
     try:
-        gh = GitHubClient()
-        if not gh.authenticated:
-            _warn("未设置 GITHUB_TOKEN，匿名配额 60 次/小时，容易触顶")
-        ctx = fetch_context(owner, name, client=gh, top_threads=threads, log=_log)
+        token = os.environ.get("GITHUB_TOKEN")
+        if not token and not reuse_backup:
+            raise FetchError(
+                "未设置 GITHUB_TOKEN；python-github-backup 的完整采集（尤其是 Discussion）"
+                "需要认证"
+            )
+        ctx = fetch_context(
+            owner,
+            name,
+            backup_root=raw_dir,
+            token=token,
+            organization=organization,
+            top_threads=threads,
+            reuse_backup=reuse_backup,
+            log=_log,
+        )
     except FetchError as exc:
         _die(f"抓取失败：{exc}", 3)
 

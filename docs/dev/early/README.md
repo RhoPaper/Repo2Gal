@@ -2,6 +2,9 @@
 
 这里是 v1–v9 的规划文档，保留作为决策轨迹。
 
+当前实现已经进入 `v0.1.0` 可用基线：Chronicle MVP 于 2026-07-31 完成真实环境
+端到端实测。本目录不再代表项目当前进度，当前状态以根目录 README 和 `../architecture.md` 为准。
+
 > ⚠️ **动手写代码前请先读 [`../webgal-script-reference.md`](../webgal-script-reference.md)。**
 > 本目录多份文档含有错误的 WebGAL 语法，照抄会产出跑不起来或错渲染的产物。
 
@@ -16,7 +19,7 @@
 | v5 | Gemini | 工程纪律 | No Over-engineering；解析失败降级旁白而非抛异常 |
 | v6 | Gemini | 宣传白皮书 | 基本无可用内容 |
 | v7 | Gemini | 依赖选型 | 引入 PocketFlow |
-| v8 | Gemini | 依赖选型修正 | **用 gh2md 取代 github_analyzer**（判断正确） |
+| v8 | Gemini | 依赖选型修正 | 认识到 Issue/PR 完整讨论比宏观统计更有叙事价值 |
 | v9 | 多份 | DAG 重构 + 深调研 | 静态模板克隆注入策略 |
 
 ## 最终采纳
@@ -27,8 +30,9 @@
 
 1. **不用 PocketFlow。** 六个节点顺序执行本就是一条直线，六个函数依次调用即可。
    等到需要 map-reduce 分章节生成时再引入。
-2. **不用 gh2md，直接调 GitHub API。** Chronicle 模式只要「评论最多的 Top N 条」，
-   Search API 一次到位；gh2md 是全量导出 Markdown，还得回头解析。少一个外部二进制依赖。
+2. **采集统一依赖 `josegonzalez/python-github-backup`。** 早期曾短暂自写 GitHub API
+   客户端，后确认成熟项目已经覆盖认证、分页、限流、Issue/PR、Discussion、wiki、
+   Release 和增量备份，自写实现已删除。Repo2Gal 只保留 subprocess 适配和数据归一化。
 3. **三模式砍成一个，只做 Chronicle。** 三套 prompt = 三倍调试成本。
    且 Explorer 模式本质是「AI 重写 README」，最容易被质疑价值。
 

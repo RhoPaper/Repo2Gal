@@ -68,7 +68,7 @@ def build_cast(ctx: RepoContext) -> Cast:
         name = _sanitize_name(c.login)
         if name in {n for n, _ in entries}:
             continue
-        entries.append((name, f"核心贡献者，累计 {c.contributions} 次提交"))
+        entries.append((name, f"社区参与者，在筛选后的叙事素材中出现 {c.contributions} 次"))
 
     lang = _sanitize_name(ctx.language)
     if lang and lang.lower() != "未知" and lang not in {n for n, _ in entries}:
@@ -85,8 +85,10 @@ def render_context(ctx: RepoContext, *, max_chars: int = 14000) -> str:
     parts: list[str] = [
         f"## 仓库：{ctx.full_name}",
         f"- 简介：{ctx.description or '（无）'}",
-        f"- 主语言：{ctx.language}　Star：{ctx.stars}　创建于：{ctx.created_at}",
+        f"- 主语言：{ctx.language}　创建于：{ctx.created_at or '未知'}",
     ]
+    if ctx.stars:
+        parts.append(f"- Star：{ctx.stars}")
     if ctx.topics:
         parts.append(f"- 主题标签：{', '.join(ctx.topics[:10])}")
 
@@ -116,6 +118,9 @@ def render_context(ctx: RepoContext, *, max_chars: int = 14000) -> str:
 
     if ctx.readme_excerpt:
         parts.append(f"\n## README 摘录\n{ctx.readme_excerpt}")
+
+    if ctx.wiki_excerpt:
+        parts.append(f"\n## Wiki 摘录\n{ctx.wiki_excerpt}")
 
     text = "\n".join(parts)
     if len(text) > max_chars:

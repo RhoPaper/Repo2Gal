@@ -3,16 +3,18 @@
 把 GitHub 仓库变成可游玩的 WebGAL 视觉小说。
 
 输入一个仓库地址，输出一个静态网站——用视觉小说的形式讲述这个项目的编年史：
-它为何诞生、经历过哪些争论、社区如何演变。素材全部来自仓库的真实 Issue/PR 讨论。
+它为何诞生、经历过哪些争论、社区如何演变。素材来自仓库的真实源码、README、
+Issue、PR、Discussion、wiki 与 Release。
 
-> 状态：MVP 可跑通。当前仅实现 Chronicle（编年）模式。
+> **当前版本：v0.1.0 Chronicle MVP。** 本阶段计划功能已全部实现，完整流程已于
+> 2026-07-31 在真实 GitHub 仓库和真实 LLM 环境中端到端实测通过。
 
 ## 快速开始
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -e .
 
-export GITHUB_TOKEN=ghp_xxx        # 可选，但强烈建议（匿名仅 60 次/小时）
+export GITHUB_TOKEN=github_pat_xxx # 必填；Discussion 的 GraphQL API 必须认证
 export REPO2GAL_API_KEY=sk-xxx     # LLM API Key
 
 repo2gal OpenWebGAL/WebGAL
@@ -35,22 +37,34 @@ export REPO2GAL_MODEL=deepseek-chat
 ```bash
 repo2gal vuejs/core --dry-run              # 只抓数据、打印 prompt
 repo2gal vuejs/core --script my_story.txt  # 用手写剧本走完打包流程
+repo2gal vuejs/core --reuse-backup         # 不联网，复用上次原始备份
 ```
 
 ## 工作原理
 
 ```
-GitHub API  ──►  RepoContext  ──►  LLM  ──►  validator  ──►  WebGAL 产物
-  抓取讨论        结构化素材        写剧本      收敛降级        静态站点
+python-github-backup ──► RepoContext ──► LLM ──► validator ──► WebGAL 产物
+  全量原始归档          筛选叙事素材      写剧本    收敛降级       静态站点
 ```
 
 | 模块 | 职责 |
 |---|---|
-| `fetcher.py` | 抓仓库元信息、README、贡献者、Release、热门 Issue/PR 讨论 |
+| `fetcher.py` | 调用 `python-github-backup`，解析源码/Issue/PR/Discussion/wiki/Release |
 | `generator.py` | 定角色表（确定性）、拼 prompt、调 LLM |
 | `validator.py` | 把脚本收敛到安全语法子集 |
 | `packager.py` | 克隆 WebGAL 发行版模板，注入脚本 |
 | `cli.py` | 串联流程 |
+
+### 为什么采集依赖 python-github-backup
+
+Repo2Gal 不自行实现 GitHub API 客户端。认证、分页、速率限制、重试、GraphQL、
+Discussion 回复、Issue timeline、wiki clone 和增量备份全部交给成熟项目
+[`josegonzalez/python-github-backup`](https://github.com/josegonzalez/python-github-backup)（MIT）。
+
+默认采集叙事所需的完整文本数据，但**不默认下载** Release 二进制和用户附件，
+因为这两类文件可能让一次生成意外下载数十 GB。未来将作为显式选项提供。
+
+原始备份保存在 `.repo2gal/backups/<owner>/repositories/<repo>/`，可以审计和复用。
 
 ### 为什么必须有 validator
 
@@ -73,13 +87,23 @@ validator 在打包前做四件事：
 
 角色表由代码从贡献者列表推导，**不交给 LLM 决定**——否则无法区分「新角色」和「幻觉命令」。
 
+## 素材系统方向
+
+外部媒体资源将采用统一的、引擎无关的 Asset Pack，不直接捆绑进 GPL 程序代码。
+素材有三种 Provider：用户本地导入、GitHub 开源素材包下载、AI 生成。三种来源最终必须
+产出相同格式的 `repo2gal-pack.json`，记录 SPDX 许可证、作者、版本、来源、哈希和生成记录。
+
+详见 [`docs/dev/asset-pack-spec.md`](docs/dev/asset-pack-spec.md)。
+
 ## 已知限制
 
-- **素材匮乏是当前最大短板。** WebGAL 发行版只自带 3 张背景 + 1 首 BGM，
-  产物观感受限。这是决定项目传播力的关键问题，尚未解决。
+- Asset Pack 目前只有规范草案，尚未实现；现在仍使用 WebGAL 内置的 3 张背景和 1 首 BGM。
 - 仅 Chronicle 一种模式。
 - 剧情为单场景线性叙事 + 少量分支，未做多场景切分。
-- 讨论抓取依赖 GitHub Search API，冷门仓库素材可能不足。
+- `python-github-backup` 不落盘仓库列表中的 Star、topics 等概览字段，目前不会送入剧情上下文。
+- 全量 Issue/PR/Discussion 备份可能耗时较长，后续运行会使用上游增量备份。
+
+以上均为下一阶段能力或已知产品边界，不影响 v0.1.0 Chronicle MVP 的完整使用。
 
 ## 开发
 
@@ -92,8 +116,11 @@ validator 在打包前做四件事：
 
 - [`docs/dev/webgal-script-reference.md`](docs/dev/webgal-script-reference.md) —
   WebGAL 语法速查表，对照解析器源码核实过，**写代码前先读这个**
+- [`docs/dev/architecture.md`](docs/dev/architecture.md) — 当前真实架构、依赖边界和数据流
+- [`docs/dev/asset-pack-spec.md`](docs/dev/asset-pack-spec.md) — Asset Pack v1 规范草案
 - [`docs/dev/early/`](docs/dev/early/) — 早期规划文档（v1–v9）及其勘误
 
 ## 许可
 
-产物基于 WebGAL 引擎（MPL-2.0）。
+Repo2Gal 计划采用 GPL 开源，具体 GPL 版本将在加入根目录 `LICENSE` 时锁定。
+WebGAL 引擎保持 MPL-2.0；外部 Asset Pack 保持各自许可证，不因打包而自动变成 GPL。

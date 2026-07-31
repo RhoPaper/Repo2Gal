@@ -1,11 +1,21 @@
 """打包与上下文构建的测试（不联网）。"""
 
+import json
+import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from repo2gal.fetcher import Contributor, RepoContext, Thread, parse_repo  # noqa: E402
+import repo2gal.fetcher as fetcher  # noqa: E402
+from repo2gal.fetcher import (  # noqa: E402
+    Contributor,
+    RepoContext,
+    Thread,
+    context_from_backup,
+    parse_repo,
+    run_backup,
+)
 from repo2gal.generator import build_cast, render_context  # noqa: E402
 from repo2gal.packager import build_config, package  # noqa: E402
 
@@ -74,10 +84,160 @@ def test_render_context_includes_discussion():
     assert "acme/widget" in text
 
 
+def test_render_context_includes_wiki():
+    ctx = make_ctx()
+    ctx.wiki_excerpt = "架构决策记录"
+    assert "## Wiki 摘录" in render_context(ctx)
+
+
 def test_render_context_truncates():
     ctx = make_ctx()
     ctx.readme_excerpt = "x" * 50000
     assert len(render_context(ctx, max_chars=1000)) < 1200
+
+
+# --- python-github-backup 适配层 ---
+
+def _write_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+
+def test_context_from_backup_reads_issue_pr_discussion_and_wiki(tmp_path):
+    backup = tmp_path / "repositories" / "widget"
+    source = backup / "repository"
+    source.mkdir(parents=True)
+    (source / "README.md").write_text("# Widget\n一个小组件", encoding="utf-8")
+    (source / "main.py").write_text("print('hi')", encoding="utf-8")
+    wiki = backup / "wiki"
+    wiki.mkdir()
+    (wiki / "Architecture.md").write_text("# 架构\n事件总线", encoding="utf-8")
+
+    _write_json(
+        backup / "issues" / "1.json",
+        {
+            "number": 1,
+            "title": "内存泄漏",
+            "state": "closed",
+            "user": {"login": "alice"},
+            "created_at": "2024-01-01T00:00:00Z",
+            "comments": 1,
+            "body": "发现泄漏",
+            "comment_data": [{"user": {"login": "bob"}, "body": "可以复现"}],
+        },
+    )
+    _write_json(
+        backup / "pulls" / "2.json",
+        {
+            "number": 2,
+            "title": "修复泄漏",
+            "state": "closed",
+            "user": {"login": "bob"},
+            "created_at": "2024-01-02T00:00:00Z",
+            "comments": 1,
+            "review_comments": 1,
+            "body": "释放资源",
+            "comment_regular_data": [{"user": {"login": "alice"}, "body": "同意"}],
+            "review_data": [{"user": {"login": "carol"}, "body": "请补测试"}],
+        },
+    )
+    _write_json(
+        backup / "discussions" / "3.json",
+        {
+            "number": 3,
+            "title": "未来路线",
+            "closed": False,
+            "author": {"login": "carol"},
+            "createdAt": "2024-01-03T00:00:00Z",
+            "comment_count": 1,
+            "body": "讨论插件系统",
+            "comment_data": [
+                {
+                    "author": {"login": "alice"},
+                    "body": "支持",
+                    "reply_data": [{"author": {"login": "bob"}, "body": "先做接口"}],
+                }
+            ],
+        },
+    )
+    _write_json(
+        backup / "releases" / "v1.0.0.json",
+        {
+            "tag_name": "v1.0.0",
+            "name": "First release",
+            "published_at": "2024-02-01T00:00:00Z",
+            "body": "首个版本",
+            "draft": False,
+        },
+    )
+
+    ctx = context_from_backup("acme", "widget", backup, top_threads=10)
+
+    assert {thread.kind for thread in ctx.threads} == {"issue", "pr", "discussion"}
+    assert any(thread.title == "未来路线" for thread in ctx.threads)
+    assert "事件总线" in ctx.wiki_excerpt
+    assert ctx.language == "Python"
+    assert ctx.releases[0].tag == "v1.0.0"
+    assert {person.login for person in ctx.contributors} >= {"alice", "bob", "carol"}
+
+
+def test_context_reads_fetched_remote_ref_not_stale_worktree(tmp_path):
+    """上游更新 clone 时只 fetch；Context Builder 必须从 origin/HEAD 读最新内容。"""
+    origin = tmp_path / "origin.git"
+    work = tmp_path / "work"
+    backup = tmp_path / "repositories" / "widget"
+    clone = backup / "repository"
+
+    def git(*args, cwd=None):
+        subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+
+    git("init", "--bare", str(origin))
+    git("init", str(work))
+    git("config", "user.email", "test@example.com", cwd=work)
+    git("config", "user.name", "Test", cwd=work)
+    (work / "README.md").write_text("# Old title", encoding="utf-8")
+    git("add", "README.md", cwd=work)
+    git("commit", "-m", "initial", cwd=work)
+    git("branch", "-M", "main", cwd=work)
+    git("remote", "add", "origin", str(origin), cwd=work)
+    git("push", "-u", "origin", "main", cwd=work)
+    git("symbolic-ref", "HEAD", "refs/heads/main", cwd=origin)
+    clone.parent.mkdir(parents=True)
+    git("clone", str(origin), str(clone))
+
+    (work / "README.md").write_text("# New title", encoding="utf-8")
+    git("add", "README.md", cwd=work)
+    git("commit", "-m", "update", cwd=work)
+    git("push", cwd=work)
+    git("fetch", "--all", cwd=clone)
+
+    assert "Old title" in (clone / "README.md").read_text(encoding="utf-8")
+    ctx = context_from_backup("acme", "widget", backup)
+    assert "New title" in ctx.readme_excerpt
+
+
+def test_run_backup_delegates_all_github_work_to_upstream(tmp_path, monkeypatch):
+    captured = {}
+    expected = tmp_path / "repositories" / "widget"
+    expected.mkdir(parents=True)
+
+    monkeypatch.setattr(fetcher.shutil, "which", lambda _name: "/usr/bin/github-backup")
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(fetcher.subprocess, "run", fake_run)
+    result = run_backup("acme", "widget", tmp_path, token="ghp_test", incremental=False)
+
+    command = captured["command"]
+    assert result == expected
+    assert "--issues" in command
+    assert "--pulls" in command
+    assert "--discussions" in command
+    assert "--wikis" in command
+    assert "--repositories" in command
+    assert "--all" not in command  # 避免隐式下载大型 Release assets / hooks
 
 
 # --- config ---
