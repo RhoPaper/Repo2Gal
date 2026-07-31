@@ -1,0 +1,25 @@
+[project]
+name = "repo2gal"
+version = "0.1.0"
+description = "把 GitHub 仓库变成可游玩的 WebGAL 视觉小说"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.28",
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+repo2gal = "repo2gal.cli:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["repo2gal*"]
+
+[tool.setuptools.package-data]
+repo2gal = ["prompts/*.md"]
