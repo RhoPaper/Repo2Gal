@@ -157,9 +157,9 @@ def call_llm(
         raise GenerationError("缺少 API Key，请设置环境变量 REPO2GAL_API_KEY")
 
     base_url = (
-        base_url or os.environ.get("REPO2GAL_BASE_URL") or "https://api.openai.com/v1"
+        base_url or os.environ.get("REPO2GAL_BASE_URL") or "https://api.deepseek.com/v1"
     ).rstrip("/")
-    model = model or os.environ.get("REPO2GAL_MODEL") or "gpt-4o"
+    model = model or os.environ.get("REPO2GAL_MODEL") or "deepseek-v4-pro"
 
     resp = requests.post(
         f"{base_url}/chat/completions",
