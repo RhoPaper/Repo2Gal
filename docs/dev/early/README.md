@@ -2,8 +2,9 @@
 
 这里是 v1–v9 的规划文档，保留作为决策轨迹。
 
-当前实现已经进入 `v0.1.0` 可用基线：Chronicle MVP 于 2026-07-31 完成真实环境
-端到端实测。本目录不再代表项目当前进度，当前状态以根目录 README 和 `../architecture.md` 为准。
+当前实现已经进入 `v0.2.0` 可用基线：Chronicle MVP 于 2026-07-31 完成真实环境
+端到端实测，随后加入采集/下载进度和官方 REST 元数据补充。本目录不再代表项目当前进度，
+当前状态以根目录 README 和 `../architecture.md` 为准。
 
 > ⚠️ **动手写代码前请先读 [`../webgal-script-reference.md`](../webgal-script-reference.md)。**
 > 本目录多份文档含有错误的 WebGAL 语法，照抄会产出跑不起来或错渲染的产物。

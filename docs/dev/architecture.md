@@ -2,8 +2,8 @@
 
 > 本文描述**当前实现和已锁定的边界**。历史设想放在 `docs/dev/early/`，不得把早期规划当成现状。
 
-当前基线：`v0.1.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
-环境中端到端实测通过；本阶段期望功能全部完成。
+当前基线：`v0.2.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
+环境中端到端实测通过。v0.2.0 增加实时采集/下载进度和官方 GitHub REST 仓库概览。
 
 ## 1. 产品定位
 
@@ -17,11 +17,15 @@ wiki 与 Release 中提炼项目历史，生成 WebGAL 静态站点。
 ```text
 GitHub repository
        │
-       ▼
-python-github-backup                 成熟外部采集器
-       │                             认证 / 分页 / 限流 / 重试 / GraphQL / Git clone
-       ▼
-.repo2gal/backups/<owner>/           可审计、可增量、可复用的原始备份
+       ├──► python-github-backup     认证 / 分页 / 限流 / 重试 / GraphQL / Git clone
+       │               │
+       │               ▼
+       │    完整源码与社区原始备份
+       │
+       └──► GitHub official REST     单次仓库概览：description / Star / topics 等
+                       │
+                       ▼
+.repo2gal/backups/<owner>/           可审计、可增量、可复用的原始数据
        │
        ▼
 fetcher.context_from_backup()        确定性归一化与热门素材筛选
@@ -60,7 +64,7 @@ output/<repo>/                       可由任意静态服务器托管
 
 Repo2Gal **不负责**：
 
-- GitHub REST/GraphQL 认证
+- 通用 GitHub REST/GraphQL 认证管理
 - API 分页
 - 速率限制与节流
 - 网络重试
@@ -82,7 +86,21 @@ Repo2Gal **不负责**：
 
 不要把上游的 `--all` 直接作为默认值：它会隐式包含 hooks 与 Release assets。
 
-### 3.2 渲染：OpenWebGAL/WebGAL
+### 3.2 官方 GitHub REST API 例外
+
+仓库数据采集模块允许直接调用 GitHub 官方 REST API，但边界严格限制为：
+
+- 只使用 `https://api.github.com` 的公开、版本化 REST endpoint；
+- 只补充 `python-github-backup` 未落盘且 RepoContext 确实需要的数据；
+- 当前仅调用 `GET /repos/{owner}/{repo}`；
+- 使用 GitHub 官方 API 版本头和现有 `GITHUB_TOKEN`；
+- REST 补充失败不得破坏完整备份主流程；
+- 禁止抓取 `github.com` HTML、搜索结果、非官方镜像或其他网页；
+- 禁止自建通用 GitHub API 客户端、GraphQL 客户端、分页器、限流器和重试框架。
+
+新增 endpoint 时必须在本文记录用途和上游缺口，并提供离线 mock 测试。
+
+### 3.3 渲染：OpenWebGAL/WebGAL
 
 - 许可证：MPL-2.0
 - 接入方式：下载固定版本官方 `*-web.zip`，校验 SHA-256，按版本缓存后复制
@@ -92,7 +110,7 @@ Repo2Gal **不负责**：
 
 详见 `docs/dev/webgal-script-reference.md`。
 
-### 3.3 LLM
+### 3.4 LLM
 
 - 协议：OpenAI-compatible Chat Completions
 - 默认配置：环境变量 `REPO2GAL_BASE_URL`、`REPO2GAL_MODEL`、`REPO2GAL_API_KEY`
@@ -102,7 +120,7 @@ Repo2Gal **不负责**：
 
 | 文件 | 职责 | 不应承担 |
 |---|---|---|
-| `fetcher.py` | 调上游备份工具；把落盘数据转成 `RepoContext` | 自己请求 GitHub API |
+| `fetcher.py` | 调上游备份工具；调用受控官方 REST 补充；构建 `RepoContext` | HTML 爬虫、通用 API 客户端 |
 | `generator.py` | 确定性选角、上下文渲染、LLM 调用 | GitHub 抓取、WebGAL 打包 |
 | `validator.py` | WebGAL 安全子集、流程完整性、静默错误降级 | 改写剧情内容 |
 | `webgal.py` | 经源码核实的命令常量与转义 | 猜测引擎语法 |
@@ -116,6 +134,7 @@ Repo2Gal **不负责**：
 ```text
 .repo2gal/backups/<owner>/
 └── repositories/<repo>/
+    ├── repo2gal-repository.json # 官方 REST 仓库概览
     ├── repository/       # Git clone
     ├── wiki/             # wiki Git clone（存在时）
     ├── issues/*.json
@@ -129,11 +148,17 @@ Repo2Gal **不负责**：
 `RepoContext` 是面向 LLM 的有损视图，不是备份格式。全量原始数据必须保留，
 上下文只选评论最活跃的 Top N 条并做长度控制。
 
-当前上游不会把仓库列表元数据单独落盘，因此 Star 和 topics 暂不可用。
-不要为补这两个字段重新写 API 客户端；应优先请求上游增加 repository metadata 输出，
-或找到另一个成熟、兼容的元数据工具。
+当前上游不会把仓库列表元数据单独落盘。v0.2.0 通过官方
+`GET /repos/{owner}/{repo}` 补齐，并保存为 `repo2gal-repository.json`，供离线复用。
 
-## 6. 为什么 validator 是硬边界
+## 6. 进度反馈
+
+- `github-backup` 的 stdout/stderr 逐行转发到 CLI，展示当前资源和保存阶段；
+- WebGAL zip 使用流式下载，每约 10% 报告百分比和已下载 MB；
+- 进度显示不得输出 token、Authorization header 或带凭据 URL；
+- 日志不是数据协议，Context Builder 只读取上游落盘文件。
+
+## 7. 为什么 validator 是硬边界
 
 WebGAL 对未知命令不会报错，而会把命令名当作 speaker：
 
@@ -144,7 +169,7 @@ return SCRIPT_CONFIG_MAP.get(command)?.scriptType ?? commandType.say;
 所以 LLM 输出 `showCode:print(1);` 时，游戏会正常启动，但出现一个名叫 `showCode`
 的角色。validator 必须在打包前执行，并且不可通过“模型应该不会出错”绕过。
 
-## 7. 素材系统（已决策，未实现）
+## 8. 素材系统（已决策，未实现）
 
 素材来源插件化，但格式统一：
 
@@ -159,7 +184,7 @@ AI Provider ──────┘
 
 完整规范见 `docs/dev/asset-pack-spec.md`。
 
-## 8. 许可证边界
+## 9. 许可证边界
 
 计划中的分层：
 
@@ -174,7 +199,7 @@ AI Provider ──────┘
 程序采用 GPL 不意味着外部媒体自动变成 GPL。最终打包器未来必须聚合素材包声明并生成
 `THIRD_PARTY_NOTICES.md`。
 
-## 9. 当前状态与下一步
+## 10. 当前状态与下一步
 
 已完成：
 
@@ -187,8 +212,10 @@ AI Provider ──────┘
 - 固定版本、SHA-256 校验的官方 WebGAL 发行版模板注入
 - CLI 与离线测试
 - 真实仓库 + 真实 LLM + WebGAL 产物端到端验证
+- `github-backup` 实时采集进度与 WebGAL 下载百分比
+- 官方 GitHub REST 仓库概览及离线落盘
 
-`v0.1.0` 结论：当前 Chronicle MVP 已可用，不再处于“仅设计”或“待跑通”状态。
+`v0.2.0` 结论：当前 Chronicle MVP 已可用，不再处于“仅设计”或“待跑通”状态。
 
 推荐下一步：
 

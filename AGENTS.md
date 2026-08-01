@@ -9,8 +9,8 @@ Repo2Gal 把 GitHub 仓库转换为基于 WebGAL 的“可游玩开源项目文�
 当前只实现 Chronicle（编年）模式：使用真实源码、README、Issue、PR、Discussion、wiki
 和 Release 生成项目历史视觉小说。不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
 
-当前稳定基线为 `v0.1.0`：本阶段功能已全部实现，并于 2026-07-31 通过真实仓库、真实 LLM
-和 WebGAL 产物的端到端实测。后续修改不得把已验证主流程重新描述为“尚未跑通”。
+当前稳定基线为 `v0.2.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
+和 WebGAL 产物的端到端实测；v0.2.0 增加采集/下载进度与官方 REST 元数据补充。
 
 开始工作前必读：
 
@@ -27,11 +27,16 @@ Repo2Gal 把 GitHub 仓库转换为基于 WebGAL 的“可游玩开源项目文�
 
 尤其禁止自行实现：
 
-- GitHub REST/GraphQL 客户端；
+- 通用 GitHub REST/GraphQL 客户端；
 - API 认证、分页、限流、重试和增量 checkpoint；
 - Git clone/wiki clone；
 - 通用归档下载器、包管理器、媒体转码器；
 - 已有成熟库覆盖的 JSON Schema、SPDX、SemVer、MIME 检测等基础能力。
+
+**唯一例外：** `repo2gal/fetcher.py` 的仓库数据获取实现可以调用 GitHub 官方 REST API，
+但仅限 `https://api.github.com` 的公开 REST endpoint，用于补充现有依赖未落盘的数据。
+禁止抓取 GitHub HTML 页面、搜索结果、非官方镜像或其他网页；禁止使用爬虫；禁止直接调用
+GitHub GraphQL；禁止借此恢复通用 API 客户端、分页器、限流器或重试框架。
 
 新增基础设施代码前必须先做依赖调研，至少记录：
 
@@ -59,9 +64,8 @@ Repo2Gal 把 GitHub 仓库转换为基于 WebGAL 的“可游玩开源项目文�
 - 覆盖：repository、Issue、PR、Discussion、wiki、Release、label、milestone、增量备份
 - 原始数据：`.repo2gal/backups/<owner>/repositories/<repo>/`
 
-不得恢复已删除的自写 `GitHubClient`。如果需要 Star/topics 等上游目前不落盘的字段，
-优先向 `python-github-backup` 提议保存 repository metadata，或评估另一个成熟工具；
-不得为了两个字段重新维护 GitHub API 客户端。
+不得恢复已删除的通用 `GitHubClient`。上游未落盘的 Star/topics 等字段当前通过官方
+`GET /repos/{owner}/{repo}` 补齐。新增 REST endpoint 必须有明确字段需求、文档记录和离线测试。
 
 不要默认传上游 `--all`。它会包含 hooks 和 Release assets，可能要求额外权限并下载大量二进制。
 当前显式 flags 定义在 `fetcher.NARRATIVE_BACKUP_FLAGS`。
@@ -134,7 +138,7 @@ WebGAL 会把未知命令静默解释为 speaker，不会报错。因此“页�
 
 | 路径 | 职责 |
 |---|---|
-| `repo2gal/fetcher.py` | github-backup subprocess 适配；备份 JSON/Git -> RepoContext |
+| `repo2gal/fetcher.py` | github-backup 适配；受控官方 REST 元数据；备份 JSON/Git -> RepoContext |
 | `repo2gal/generator.py` | 确定性选角、上下文渲染、LLM 调用 |
 | `repo2gal/validator.py` | WebGAL 安全子集与静默错误降级 |
 | `repo2gal/webgal.py` | 从官方 parser 核实的命令常量与转义 |
@@ -178,7 +182,7 @@ export REPO2GAL_API_KEY=sk_xxx
 
 - Asset Pack 只有规范草案，尚未实现。
 - WebGAL 默认素材只有 3 张背景和 1 首 BGM。
-- `python-github-backup` 当前不落盘仓库列表元数据，Star/topics 暂缺。
+- `python-github-backup` 不落盘仓库列表元数据，目前由一个受控官方 REST 请求补齐。
 - 全量大仓库备份可能很慢、很大；依赖上游增量机制，不自己再写缓存协议。
 - 当前只有 Chronicle 模式和单场景产物。
 - 尚未加入根目录 `LICENSE`，计划采用 GPL 但具体版本待项目所有者确认。
@@ -186,7 +190,8 @@ export REPO2GAL_API_KEY=sk_xxx
 ## 10. 不要做的事
 
 - 不要新增第 10 版宏大规划文档来代替代码和验证。
-- 不要恢复自写 GitHub API 请求。
+- 不要恢复通用 GitHub API 客户端；受控官方 REST 补充只能放在仓库数据获取模块。
+- 不要使用 HTML 爬虫、搜索引擎抓取或非官方 GitHub 数据接口。
 - 不要根据 LLM 记忆编造 WebGAL 语法。
 - 不要把 `.wg`、`say:角色:文本` 或 `webgal serve` 写回当前文档。
 - 不要默认下载 Release assets、附件或 LFS 大文件。

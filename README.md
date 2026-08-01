@@ -6,8 +6,15 @@
 它为何诞生、经历过哪些争论、社区如何演变。素材来自仓库的真实源码、README、
 Issue、PR、Discussion、wiki 与 Release。
 
-> **当前版本：v0.1.0 Chronicle MVP。** 本阶段计划功能已全部实现，完整流程已于
-> 2026-07-31 在真实 GitHub 仓库和真实 LLM 环境中端到端实测通过。
+> **当前版本：v0.2.0 Chronicle MVP。** v0.1.0 主流程已于 2026-07-31 在真实 GitHub
+> 仓库和真实 LLM 环境中端到端实测通过；v0.2.0 新增采集/下载进度和官方 REST 元数据补充。
+
+### v0.2.0 新增
+
+- 实时显示 `python-github-backup` 的仓库、Issue、PR、Discussion、wiki 等采集阶段；
+- 下载 WebGAL 官方发行版时显示百分比和已下载体积；
+- 通过官方 GitHub REST API 补齐 description、language、Star、topics、创建时间等仓库概览；
+- 官方 REST 元数据落盘到原始备份，可由 `--reuse-backup` 离线复用。
 
 ## 快速开始
 
@@ -43,13 +50,14 @@ repo2gal vuejs/core --reuse-backup         # 不联网，复用上次原始备�
 ## 工作原理
 
 ```
-python-github-backup ──► RepoContext ──► LLM ──► validator ──► WebGAL 产物
-  全量原始归档          筛选叙事素材      写剧本    收敛降级       静态站点
+python-github-backup ─┐
+                      ├─► RepoContext ──► LLM ──► validator ──► WebGAL 产物
+GitHub REST metadata ─┘    筛选叙事素材      写剧本    收敛降级       静态站点
 ```
 
 | 模块 | 职责 |
 |---|---|
-| `fetcher.py` | 调用 `python-github-backup`，解析源码/Issue/PR/Discussion/wiki/Release |
+| `fetcher.py` | 调用 `python-github-backup`；从官方 REST API 补仓库概览；构建 RepoContext |
 | `generator.py` | 定角色表（确定性）、拼 prompt、调 LLM |
 | `validator.py` | 把脚本收敛到安全语法子集 |
 | `packager.py` | 克隆 WebGAL 发行版模板，注入脚本 |
@@ -60,6 +68,10 @@ python-github-backup ──► RepoContext ──► LLM ──► validator ─
 Repo2Gal 不自行实现 GitHub API 客户端。认证、分页、速率限制、重试、GraphQL、
 Discussion 回复、Issue timeline、wiki clone 和增量备份全部交给成熟项目
 [`josegonzalez/python-github-backup`](https://github.com/josegonzalez/python-github-backup)（MIT）。
+
+上游未落盘的仓库概览由固定官方端点 `https://api.github.com/repos/{owner}/{repo}` 补齐。
+仓库数据模块允许调用 GitHub 官方 REST API，但禁止抓取 `github.com` HTML 页面、使用搜索引擎
+爬取、调用非官方接口或自行实现通用 GitHub 客户端。
 
 默认采集叙事所需的完整文本数据，但**不默认下载** Release 二进制和用户附件，
 因为这两类文件可能让一次生成意外下载数十 GB。未来将作为显式选项提供。
@@ -100,10 +112,9 @@ validator 在打包前做四件事：
 - Asset Pack 目前只有规范草案，尚未实现；现在仍使用 WebGAL 内置的 3 张背景和 1 首 BGM。
 - 仅 Chronicle 一种模式。
 - 剧情为单场景线性叙事 + 少量分支，未做多场景切分。
-- `python-github-backup` 不落盘仓库列表中的 Star、topics 等概览字段，目前不会送入剧情上下文。
 - 全量 Issue/PR/Discussion 备份可能耗时较长，后续运行会使用上游增量备份。
 
-以上均为下一阶段能力或已知产品边界，不影响 v0.1.0 Chronicle MVP 的完整使用。
+以上均为下一阶段能力或已知产品边界，不影响 v0.2.0 Chronicle MVP 的完整使用。
 
 ## 开发
 

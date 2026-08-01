@@ -1,23 +1,29 @@
 """打包与上下文构建的测试（不联网）。"""
 
+import hashlib
+import io
 import json
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import repo2gal.fetcher as fetcher  # noqa: E402
+import repo2gal.packager as packager_module  # noqa: E402
 from repo2gal.fetcher import (  # noqa: E402
     Contributor,
     RepoContext,
     Thread,
     context_from_backup,
+    fetch_context,
+    fetch_repository_metadata,
     parse_repo,
     run_backup,
 )
 from repo2gal.generator import build_cast, render_context  # noqa: E402
-from repo2gal.packager import build_config, package  # noqa: E402
+from repo2gal.packager import build_config, ensure_template, package  # noqa: E402
 
 
 def make_ctx():
@@ -171,12 +177,29 @@ def test_context_from_backup_reads_issue_pr_discussion_and_wiki(tmp_path):
         },
     )
 
-    ctx = context_from_backup("acme", "widget", backup, top_threads=10)
+    ctx = context_from_backup(
+        "acme",
+        "widget",
+        backup,
+        top_threads=10,
+        metadata={
+            "owner": {"login": "acme"},
+            "name": "widget",
+            "description": "Official description",
+            "language": "Python",
+            "stargazers_count": 123,
+            "created_at": "2023-01-01T00:00:00Z",
+            "topics": ["demo", "widget"],
+        },
+    )
 
     assert {thread.kind for thread in ctx.threads} == {"issue", "pr", "discussion"}
     assert any(thread.title == "未来路线" for thread in ctx.threads)
     assert "事件总线" in ctx.wiki_excerpt
     assert ctx.language == "Python"
+    assert ctx.stars == 123
+    assert ctx.topics == ["demo", "widget"]
+    assert ctx.description == "Official description"
     assert ctx.releases[0].tag == "v1.0.0"
     assert {person.login for person in ctx.contributors} >= {"alice", "bob", "carol"}
 
@@ -218,17 +241,31 @@ def test_context_reads_fetched_remote_ref_not_stale_worktree(tmp_path):
 
 def test_run_backup_delegates_all_github_work_to_upstream(tmp_path, monkeypatch):
     captured = {}
+    progress = []
     expected = tmp_path / "repositories" / "widget"
     expected.mkdir(parents=True)
 
     monkeypatch.setattr(fetcher.shutil, "which", lambda _name: "/usr/bin/github-backup")
 
-    def fake_run(command, **kwargs):
-        captured["command"] = command
-        return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+    class FakeProcess:
+        stdout = io.StringIO("Retrieving issues\nSaving discussions\n")
 
-    monkeypatch.setattr(fetcher.subprocess, "run", fake_run)
-    result = run_backup("acme", "widget", tmp_path, token="ghp_test", incremental=False)
+        def wait(self):
+            return 0
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        return FakeProcess()
+
+    monkeypatch.setattr(fetcher.subprocess, "Popen", fake_popen)
+    result = run_backup(
+        "acme",
+        "widget",
+        tmp_path,
+        token="ghp_test",
+        incremental=False,
+        progress=progress.append,
+    )
 
     command = captured["command"]
     assert result == expected
@@ -238,6 +275,63 @@ def test_run_backup_delegates_all_github_work_to_upstream(tmp_path, monkeypatch)
     assert "--wikis" in command
     assert "--repositories" in command
     assert "--all" not in command  # 避免隐式下载大型 Release assets / hooks
+    assert progress == ["Retrieving issues", "Saving discussions"]
+    assert "ghp_test" not in " ".join(command)
+
+
+def test_repository_metadata_uses_only_official_rest_api(monkeypatch):
+    captured = {}
+
+    class Response:
+        ok = True
+        status_code = 200
+
+        def json(self):
+            return {"name": "widget", "stargazers_count": 42}
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured["kwargs"] = kwargs
+        return Response()
+
+    monkeypatch.setattr(fetcher.requests, "get", fake_get)
+    data = fetch_repository_metadata("acme", "widget", "secret-token")
+
+    assert captured["url"] == "https://api.github.com/repos/acme/widget"
+    assert "github.com/acme/widget" not in captured["url"]
+    assert captured["kwargs"]["headers"]["X-GitHub-Api-Version"] == "2022-11-28"
+    assert data["stargazers_count"] == 42
+
+
+def test_fetch_context_persists_rest_metadata_for_offline_reuse(tmp_path, monkeypatch):
+    backup = tmp_path / "repositories" / "widget"
+    source = backup / "repository"
+    source.mkdir(parents=True)
+    (source / "README.md").write_text("# Widget", encoding="utf-8")
+    metadata = {
+        "owner": {"login": "acme"},
+        "name": "widget",
+        "description": "Persisted description",
+        "stargazers_count": 99,
+        "topics": ["saved"],
+    }
+
+    monkeypatch.setattr(fetcher, "fetch_repository_metadata", lambda *args, **kwargs: metadata)
+    monkeypatch.setattr(fetcher, "run_backup", lambda *args, **kwargs: backup)
+    online = fetch_context("acme", "widget", backup_root=tmp_path, token="token")
+
+    saved = json.loads((backup / "repo2gal-repository.json").read_text(encoding="utf-8"))
+    assert saved == metadata
+    assert online.stars == 99
+
+    monkeypatch.setattr(
+        fetcher,
+        "fetch_repository_metadata",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("offline mode used network")),
+    )
+    offline = fetch_context("acme", "widget", backup_root=tmp_path, reuse_backup=True)
+    assert offline.stars == 99
+    assert offline.topics == ["saved"]
 
 
 # --- config ---
@@ -255,6 +349,34 @@ def test_config_has_required_keys():
 
 
 # --- 打包 ---
+
+def test_webgal_download_reports_progress_and_checks_hash(tmp_path, monkeypatch):
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("index.html", "<html></html>")
+        zf.writestr("game/scene/start.txt", "end;")
+    payload = archive.getvalue()
+
+    class Response:
+        ok = True
+        status_code = 200
+        headers = {"Content-Length": str(len(payload))}
+
+        def iter_content(self, chunk_size):
+            midpoint = len(payload) // 2
+            yield payload[:midpoint]
+            yield payload[midpoint:]
+
+    monkeypatch.setattr(packager_module, "cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(packager_module.requests, "get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(packager_module, "WEBGAL_SHA256", hashlib.sha256(payload).hexdigest())
+    logs = []
+
+    template = ensure_template(log=logs.append)
+
+    assert (template / "index.html").exists()
+    assert any("下载进度" in line for line in logs)
+    assert any("100%" in line for line in logs)
 
 def test_package_injects_script(tmp_path):
     template = tmp_path / "tpl"

@@ -24,6 +24,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+import requests
+
+
+GITHUB_REST_API = "https://api.github.com"
+
 
 class FetchError(RuntimeError):
     """采集失败，且无法继续构建上下文。"""
@@ -133,6 +138,7 @@ def run_backup(
     organization: bool = False,
     incremental: bool = True,
     log=lambda _msg: None,
+    progress=lambda _msg: None,
 ) -> Path:
     """调用 python-github-backup，返回该仓库的备份目录。
 
@@ -179,11 +185,24 @@ def run_backup(
         command.extend((option, Path(token_file).as_uri()))
 
         log(f"调用 python-github-backup 采集 {owner}/{repo}")
-        result = subprocess.run(command, text=True, capture_output=True, check=False)
-        if result.returncode:
-            detail = (result.stderr or result.stdout).strip().splitlines()
-            message = detail[-1] if detail else "无错误详情"
-            raise FetchError(f"github-backup 退出码 {result.returncode}：{message}")
+        process = subprocess.Popen(
+            command,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+        )
+        output: list[str] = []
+        if process.stdout:
+            for raw_line in process.stdout:
+                line = raw_line.strip()
+                if line:
+                    output.append(line)
+                    progress(line)
+        returncode = process.wait()
+        if returncode:
+            message = output[-1] if output else "无错误详情"
+            raise FetchError(f"github-backup 退出码 {returncode}：{message}")
     finally:
         if token_file:
             Path(token_file).unlink(missing_ok=True)
@@ -192,6 +211,58 @@ def run_backup(
         raise FetchError(f"github-backup 未产出预期目录：{repo_dir}")
     log(f"原始备份已保存：{repo_dir}")
     return repo_dir
+
+
+def fetch_repository_metadata(
+    owner: str,
+    repo: str,
+    token: str,
+    *,
+    log=lambda _msg: None,
+) -> dict[str, Any]:
+    """通过官方 GitHub REST API 补齐上游不落盘的仓库概览。
+
+    这是仓库数据采集模块唯一允许的直接网络补充。URL 固定为
+    ``api.github.com/repos/{owner}/{repo}``；不得改成抓取 GitHub HTML 页面。
+    失败时保留 github-backup 主流程，不把非关键元数据升级为致命错误。
+    """
+    log("通过官方 GitHub REST API 获取仓库概览")
+    try:
+        response = requests.get(
+            f"{GITHUB_REST_API}/repos/{owner}/{repo}",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "Authorization": f"Bearer {token}",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "Repo2Gal",
+            },
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        log(f"仓库概览获取失败（{exc}），继续使用备份数据")
+        return {}
+    if not response.ok:
+        log(f"仓库概览获取失败（HTTP {response.status_code}），继续使用备份数据")
+        return {}
+    try:
+        data = response.json()
+    except ValueError:
+        log("仓库概览响应不是合法 JSON，继续使用备份数据")
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _metadata_path(repo_backup_dir: Path) -> Path:
+    return repo_backup_dir / "repo2gal-repository.json"
+
+
+def _read_metadata(repo_backup_dir: Path) -> dict[str, Any]:
+    path = _metadata_path(repo_backup_dir)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _clean_body(text: str | None, limit: int) -> str:
@@ -407,12 +478,14 @@ def context_from_backup(
     repo: str,
     repo_backup_dir: Path,
     *,
+    metadata: dict[str, Any] | None = None,
     top_threads: int = 12,
     log=lambda _msg: None,
 ) -> RepoContext:
     """把 python-github-backup 的落盘结果归一化成 RepoContext。"""
     repo_backup_dir = Path(repo_backup_dir)
     source_dir = repo_backup_dir / "repository"
+    metadata = metadata if metadata is not None else _read_metadata(repo_backup_dir)
 
     threads = [
         *(_thread_from_issue(item) for item in _load_json_files(repo_backup_dir / "issues")),
@@ -446,7 +519,7 @@ def context_from_backup(
     readme = _read_text_candidates(
         source_dir, ("README.md", "README.rst", "README.txt", "README"), 3000
     )
-    description = next(
+    readme_description = next(
         (line.lstrip("#= ") for line in readme.splitlines() if line.strip()), ""
     )
     reference, _ = _git_files(source_dir)
@@ -456,12 +529,13 @@ def context_from_backup(
     first_commit = _git_output(source_dir, "show", "-s", "--format=%cs", roots[0]) if roots else ""
 
     context = RepoContext(
-        owner=owner,
-        name=repo,
-        description=description,
-        language=_detect_language(source_dir),
-        stars=0,  # 上游不落盘仓库列表元数据，0 表示未知而非没有 Star。
-        created_at=first_commit[:10],
+        owner=(metadata.get("owner") or {}).get("login") or owner,
+        name=metadata.get("name") or repo,
+        description=metadata.get("description") or readme_description,
+        language=metadata.get("language") or _detect_language(source_dir),
+        stars=metadata.get("stargazers_count") or 0,
+        created_at=(metadata.get("created_at") or first_commit)[:10],
+        topics=metadata.get("topics") or [],
         readme_excerpt=readme,
         wiki_excerpt=_read_wiki(repo_backup_dir / "wiki"),
         contributors=[Contributor(login=name, contributions=count) for name, count in activity.most_common(8)],
@@ -488,15 +562,23 @@ def fetch_context(
     top_threads: int = 12,
     reuse_backup: bool = False,
     log=lambda _msg: None,
+    progress=lambda _msg: None,
 ) -> RepoContext:
     """执行备份（或复用已有备份）并构建上下文。"""
+    if not reuse_backup and not token:
+        raise FetchError(
+            "python-github-backup 需要 GitHub Token；请设置 GITHUB_TOKEN，"
+            "或用 --reuse-backup 读取已有备份"
+        )
     expected = Path(backup_root).resolve() / "repositories" / repo
     if reuse_backup:
         if not expected.exists():
             raise FetchError(f"--reuse-backup 指定的备份不存在：{expected}")
         repo_dir = expected
         log(f"复用原始备份：{repo_dir}")
+        metadata = _read_metadata(repo_dir)
     else:
+        metadata = fetch_repository_metadata(owner, repo, token or "", log=log)
         repo_dir = run_backup(
             owner,
             repo,
@@ -504,5 +586,17 @@ def fetch_context(
             token=token,
             organization=organization,
             log=log,
+            progress=progress,
         )
-    return context_from_backup(owner, repo, repo_dir, top_threads=top_threads, log=log)
+        if metadata:
+            _metadata_path(repo_dir).write_text(
+                json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+    return context_from_backup(
+        owner,
+        repo,
+        repo_dir,
+        metadata=metadata,
+        top_threads=top_threads,
+        log=log,
+    )

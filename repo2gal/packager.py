@@ -42,10 +42,30 @@ def ensure_template(*, log=lambda _m: None) -> Path:
         return marker.parent
 
     log(f"下载固定版本 {WEBGAL_ASSET}（仅首次）")
-    blob = requests.get(WEBGAL_URL, timeout=600)
+    blob = requests.get(WEBGAL_URL, timeout=600, stream=True)
     if not blob.ok:
         raise PackageError(f"模板下载失败：HTTP {blob.status_code}")
-    digest = hashlib.sha256(blob.content).hexdigest()
+    total = int(blob.headers.get("Content-Length", 0))
+    downloaded = 0
+    next_report = 0
+    content = io.BytesIO()
+    checksum = hashlib.sha256()
+    for chunk in blob.iter_content(chunk_size=1024 * 1024):
+        if not chunk:
+            continue
+        content.write(chunk)
+        checksum.update(chunk)
+        downloaded += len(chunk)
+        if total:
+            percent = min(100, downloaded * 100 // total)
+            if percent >= next_report:
+                log(f"WebGAL 下载进度：{percent}%（{downloaded / 1024 / 1024:.1f} MB）")
+                next_report = percent + 10
+        elif downloaded // (10 * 1024 * 1024) >= next_report:
+            log(f"WebGAL 已下载：{downloaded / 1024 / 1024:.1f} MB")
+            next_report += 1
+
+    digest = checksum.hexdigest()
     if digest != WEBGAL_SHA256:
         raise PackageError(f"模板 SHA-256 不匹配：期望 {WEBGAL_SHA256}，实际 {digest}")
 
@@ -53,7 +73,8 @@ def ensure_template(*, log=lambda _m: None) -> Path:
         shutil.rmtree(dest)
     dest.mkdir(parents=True, exist_ok=True)
 
-    with zipfile.ZipFile(io.BytesIO(blob.content)) as zf:
+    content.seek(0)
+    with zipfile.ZipFile(content) as zf:
         zf.extractall(dest)
 
     # 压缩包可能多包一层目录，把 index.html 所在层拎出来

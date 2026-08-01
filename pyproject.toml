@@ -1,6 +1,6 @@
 [project]
 name = "repo2gal"
-version = "0.1.0"
+version = "0.2.0"
 description = "把 GitHub 仓库变成可游玩的 WebGAL 视觉小说"
 requires-python = ">=3.10"
 dependencies = [

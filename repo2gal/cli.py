@@ -22,6 +22,10 @@ def _warn(msg: str) -> None:
     click.echo(click.style("!", fg="yellow") + f" {msg}")
 
 
+def _progress(msg: str) -> None:
+    click.echo(click.style("  ↳", fg="blue") + f" {msg}")
+
+
 def _die(msg: str, code: int) -> None:
     click.echo(click.style("✗ ", fg="red") + msg, err=True)
     sys.exit(code)
@@ -91,6 +95,7 @@ def main(
             top_threads=threads,
             reuse_backup=reuse_backup,
             log=_log,
+            progress=_progress,
         )
     except FetchError as exc:
         _die(f"抓取失败：{exc}", 3)
