@@ -1,70 +1,57 @@
 # Repo2Gal
 
-把 GitHub 仓库变成可游玩的 WebGAL 视觉小说。
+把 GitHub 仓库转换为基于 [WebGAL](https://github.com/OpenWebGAL/WebGAL) 的可游玩开源项目文档。
 
-输入一个仓库地址，输出一个静态网站——用视觉小说的形式讲述这个项目的编年史：
-它为何诞生、经历过哪些争论、社区如何演变。素材来自仓库的真实源码、README、
-Issue、PR、Discussion、wiki 与 Release。
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 
-## 🎮 在线体验
+输入一个 GitHub 仓库地址，输出一个静态网站：以视觉小说（编年史）的形式讲述该项目的
+真实历史——它为何诞生、经历过哪些争论、社区如何演变。剧情素材全部来自仓库的真实
+源码、README、Issue、PR、Discussion、wiki 与 Release。
 
-刚看完宣发视频？直接玩由 Repo2Gal 自己生成的演示作品（dogfooding 产物，
-就是本项目 Repo2Gal 的编年史）：
+当前版本：v0.3.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。
 
-**👉 https://repo2gal.rhopaper.top/demo**
+## 演示
 
-> 演示作品由当前版本代码 + 本仓库真实数据生成，部署在 Vercel，经 Cloudflare 域名
-> `repo2gal.rhopaper.top` 提供访问；部署方式见 [`docs/dev/deployment.md`](docs/dev/deployment.md)。
+在线演示使用本仓库自身数据生成，部署于 Vercel（部署方式见
+[docs/dev/deployment.md](docs/dev/deployment.md)）：
 
-## 📚 按角色找文档
+https://repo2gal.rhopaper.top/demo
 
-| 你是谁 | 从这里开始 |
-|---|---|
-| 🎮 **用户**（想玩 / 想把自己的仓库变成游戏） | [`docs/user-guide.md`](docs/user-guide.md) 用户指南；上面就是在线 demo |
-| 👨‍💻 **开发者**（想运行、修改、贡献代码） | [`CONTRIBUTING.md`](CONTRIBUTING.md) 开发规约；[`docs/dev/architecture.md`](docs/dev/architecture.md) 架构 |
-| 🤖 **Agent**（AI 助手接手仓库） | [`AGENTS.md`](AGENTS.md) 是给你的第一入口 |
-| 🕓 **历史与版本** | [`CHANGELOG.md`](CHANGELOG.md) |
+## 特性
 
-> **当前版本：v0.3.0 Chronicle MVP。** v0.1.0 主流程已于 2026-07-31 在真实 GitHub
-> 仓库和真实 LLM 环境中端到端实测通过；v0.2.0 新增采集/下载进度和官方 REST 元数据补充；
-> v0.3.0 重构流程架构（见下），产品功能与 v0.2.0 一致。
+- **忠于事实**：剧情素材全部来自仓库真实数据；角色表由代码从贡献者与技术栈推导，
+  不允许 LLM 自行创造角色；
+- **确定性流水线**：采集、选角、校验、打包均由普通代码完成，LLM 只负责写剧本；
+- **安全校验**：所有剧本打包前强制经过 validator，收敛到 WebGAL 语法白名单，
+  未知命令、无效跳转、缺失 `end;` 等自动降级或修复（`--strict` 可拒绝降级产物）；
+- **产物即静态站点**：输出可直接托管，无需服务器；
+- **省钱与离线模式**：`--dry-run`、`--script`、`--reuse-backup` 覆盖不调用 LLM、
+  不联网的完整流程；
+- **原始数据可审计**：完整备份保留在 `.repo2gal/backups/`，可复用、可增量更新。
 
-### v0.2.0 新增
+## 安装
 
-- 实时显示 `python-github-backup` 的仓库、Issue、PR、Discussion、wiki 等采集阶段；
-- 下载 WebGAL 官方发行版时显示百分比和已下载体积；
-- 通过官方 GitHub REST API 补齐 description、language、Star、topics、创建时间等仓库概览；
-- 官方 REST 元数据落盘到原始备份，可由 `--reuse-backup` 离线复用。
+要求 Python 3.10+ 与 git：
 
-### v0.3.0 架构重构（行为修正与内部优化）
-
-- 流程从 `cli.py` 抽出为显式管线（`pipeline.py`）：抓取 → 选角 → prompt → 剧本 → 校验 → 打包，
-  每阶段产物显式传递，依赖可注入，全流程可离线端到端测试；
-- 统一错误体系（`errors.py`）：每个错误类型对应固定退出码（见下表），LLM/模板下载的
-  网络异常不再裸 traceback，错误正文统一脱敏；
-- 配置集中（`config.py`）：默认端点/模型/路径单一来源，不再散落各模块；
-- LLM 调用独立为薄客户端（`llm.py`），与确定性 prompt 组装分离；
-- 打包原子化：产物先在同目录 staging 完成再原子替换，失败保留旧产物；
-- 修复流程图缺陷：打包生成只含 `start.txt` 的最小 `flowchart.json`，游戏内可正常打开；
-- 修正 `--dry-run` 语义：与 `--script` 组合时**校验剧本并打印报告**，不再静默忽略。
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -e .
+```
 
 ## 快速开始
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -e .
-
 export GITHUB_TOKEN=github_pat_xxx # 必填；Discussion 的 GraphQL API 必须认证
 export REPO2GAL_API_KEY=sk-xxx     # LLM API Key
 
-repo2gal OpenWebGAL/WebGAL
-python3 -m http.server -d output/WebGAL 8000
+.venv/bin/repo2gal owner/repo
+python3 -m http.server -d output/<repo> 8000   # 打开 http://localhost:8000 游玩
 ```
 
-打开 http://localhost:8000 即可游玩。
+### 使用其他模型
 
-### 换用其他模型
-
-任何 OpenAI 兼容端点都能接：
+任意 OpenAI 兼容端点均可接入：
 
 ```bash
 export REPO2GAL_BASE_URL=https://api.deepseek.com/v1
@@ -74,13 +61,13 @@ export REPO2GAL_MODEL=deepseek-chat
 ### 不花钱先看看
 
 ```bash
-repo2gal vuejs/core --dry-run              # 只抓数据、打印 prompt，不调用 LLM
-repo2gal vuejs/core --script my_story.txt  # 用手写剧本走完打包流程
-repo2gal vuejs/core --reuse-backup         # 不联网，复用上次原始备份
-repo2gal vuejs/core --dry-run --script my_story.txt  # 只校验剧本并打印报告，不打包
+repo2gal vuejs/core --dry-run                       # 只抓数据、打印 prompt，不调用 LLM
+repo2gal vuejs/core --script my_story.txt           # 用手写剧本走完打包流程
+repo2gal vuejs/core --reuse-backup                  # 不联网，复用上次原始备份
+repo2gal vuejs/core --dry-run --script my_story.txt # 只校验剧本并打印报告，不打包
 ```
 
-### 模式矩阵
+### 模式
 
 | `--dry-run` | `--script` | 行为 |
 |---|---|---|
@@ -89,7 +76,7 @@ repo2gal vuejs/core --dry-run --script my_story.txt  # 只校验剧本并打印�
 | ✓ | ✗ | 抓取 → 选角 → prompt → 打印 prompt（不调 LLM） |
 | ✓ | ✓ | 抓取 → 选角 → 读脚本 → 校验 → 打印报告（不打包） |
 
-`--strict` 在所有执行校验的路径生效：validator 有任何降级即以退出码 5 结束。
+`--strict` 在所有执行校验的路径生效：validator 存在任何降级即以退出码 5 结束。
 
 ### 退出码
 
@@ -97,7 +84,7 @@ repo2gal vuejs/core --dry-run --script my_story.txt  # 只校验剧本并打印�
 |---|---|---|
 | 用法错误 | 2 | 参数/模式冲突、仓库标识或 `--script` 无法读取 |
 | 抓取失败 | 3 | `python-github-backup` 采集或备份不可用 |
-| 生成失败 | 4 | LLM 网络/HTTP/格式错误（已脱敏） |
+| 生成失败 | 4 | LLM 网络/HTTP/格式错误（错误信息已脱敏） |
 | 校验失败 | 5 | `--strict` 下 validator 存在降级 |
 | 打包失败 | 6 | 模板下载、产物构建或替换失败 |
 | 内部错误 | 1 | 未预期异常（附完整 traceback） |
@@ -126,54 +113,57 @@ GitHub REST metadata ─┘    筛选叙事素材      写剧本    收敛降级
 
 Repo2Gal 不自行实现 GitHub API 客户端。认证、分页、速率限制、重试、GraphQL、
 Discussion 回复、Issue timeline、wiki clone 和增量备份全部交给成熟项目
-[`josegonzalez/python-github-backup`](https://github.com/josegonzalez/python-github-backup)（MIT）。
+[josegonzalez/python-github-backup](https://github.com/josegonzalez/python-github-backup)（MIT）。
 
 上游未落盘的仓库概览由固定官方端点 `https://api.github.com/repos/{owner}/{repo}` 补齐。
-仓库数据模块允许调用 GitHub 官方 REST API，但禁止抓取 `github.com` HTML 页面、使用搜索引擎
-爬取、调用非官方接口或自行实现通用 GitHub 客户端。
+仓库数据模块允许调用 GitHub 官方 REST API，但禁止抓取 `github.com` HTML 页面、使用
+搜索引擎爬取、调用非官方接口或自行实现通用 GitHub 客户端。
 
-默认采集叙事所需的完整文本数据，但**不默认下载** Release 二进制和用户附件，
-因为这两类文件可能让一次生成意外下载数十 GB。未来将作为显式选项提供。
-
-原始备份保存在 `.repo2gal/backups/<owner>/repositories/<repo>/`，可以审计和复用。
+默认采集叙事所需的完整文本数据，但不默认下载 Release 二进制和用户附件（可能高达数十 GB），
+二者留作未来的显式选项。原始备份保存在 `.repo2gal/backups/<owner>/repositories/<repo>/`。
 
 ### 为什么必须有 validator
 
-WebGAL 的解析器遇到不认识的命令**不会报错**：
+WebGAL 的解析器遇到不认识的命令不会报错，而是把命令名当作角色名：
 
 ```ts
 // packages/parser/src/scriptParser/commandParser.ts
 return SCRIPT_CONFIG_MAP.get(command)?.scriptType ?? commandType.say;  // 默认 say
 ```
 
-所以 LLM 幻觉出的 `showCode:print(1);` 会变成「一个叫 showCode 的角色在说 print(1)」。
-产物永远"能跑"，却处处错渲染，靠肉眼玩游戏去发现成本极高。
+因此 LLM 幻觉出的 `showCode:print(1);` 会变成一个叫 `showCode` 的角色在说话。
+产物永远"能跑"，却处处错渲染。validator 在打包前对剧本做四件事：
 
-validator 在打包前做四件事：
+- 未知命令 / 未声明角色 → 降级为旁白；
+- 跳转目标不存在 → 注释该行，避免玩家卡死；
+- 剥离 Markdown 代码围栏与标题噪声；
+- 缺 `end;` 自动补齐。
 
-- 未知命令 / 未声明角色 → 降级为旁白
-- 跳转目标不存在 → 注释掉该行，避免玩家卡死
-- 剥离 Markdown 代码围栏与标题噪声
-- 缺 `end;` 自动补齐
-
-角色表由代码从贡献者列表推导，**不交给 LLM 决定**——否则无法区分「新角色」和「幻觉命令」。
-
-## 素材系统方向
+## 素材系统（规划）
 
 外部媒体资源将采用统一的、引擎无关的 Asset Pack，不直接捆绑进 GPL 程序代码。
-素材有三种 Provider：用户本地导入、GitHub 开源素材包下载、AI 生成。三种来源最终必须
-产出相同格式的 `repo2gal-pack.json`，记录 SPDX 许可证、作者、版本、来源、哈希和生成记录。
+素材有三种 Provider：用户本地导入、GitHub 开源素材包下载、AI 生成，最终统一产出
+相同格式的 `repo2gal-pack.json`（SPDX 许可证、作者、版本、来源、哈希与生成记录）。
+规范见 [docs/dev/asset-pack-spec.md](docs/dev/asset-pack-spec.md)。
 
-详见 [`docs/dev/asset-pack-spec.md`](docs/dev/asset-pack-spec.md)。
+## 限制
 
-## 已知限制
+- Asset Pack 仅有规范草案，尚未实现，当前使用 WebGAL 内置素材（3 张背景、1 首 BGM）；
+- 仅 Chronicle 一种模式，剧情为单场景线性叙事加少量分支；
+- 全量 Issue/PR/Discussion 备份首次可能较慢，后续运行使用上游增量备份。
 
-- Asset Pack 目前只有规范草案，尚未实现；现在仍使用 WebGAL 内置的 3 张背景和 1 首 BGM。
-- 仅 Chronicle 一种模式。
-- 剧情为单场景线性叙事 + 少量分支，未做多场景切分。
-- 全量 Issue/PR/Discussion 备份可能耗时较长，后续运行会使用上游增量备份。
+## 文档
 
-以上均为下一阶段能力或已知产品边界，不影响 v0.3.0 Chronicle MVP 的完整使用。
+- [docs/user-guide.md](docs/user-guide.md) — 用户指南：怎么玩、怎么生成自己的作品、FAQ
+- [CONTRIBUTING.md](CONTRIBUTING.md) — 开发规约：环境、边界、提交流程
+- [AGENTS.md](AGENTS.md) — AI Agent 接手仓库的第一入口
+- [CHANGELOG.md](CHANGELOG.md) — 版本历史
+- [docs/dev/webgal-script-reference.md](docs/dev/webgal-script-reference.md) —
+  WebGAL 语法速查表，对照解析器源码核实过，修改脚本生成前必读
+- [docs/dev/architecture.md](docs/dev/architecture.md) — 当前架构、依赖边界和数据流
+- [docs/dev/asset-pack-spec.md](docs/dev/asset-pack-spec.md) — Asset Pack v1 规范草案
+- [docs/dev/deployment.md](docs/dev/deployment.md) — 在线演示的部署与更新方式
+- [docs/dev/early/](docs/dev/early/) — 早期规划文档（v1–v9）及其勘误，仅历史参考
 
 ## 开发
 
@@ -182,20 +172,10 @@ validator 在打包前做四件事：
 .venv/bin/python -m pytest tests/ -q
 ```
 
-## 文档
-
-- [`docs/user-guide.md`](docs/user-guide.md) — 用户指南：怎么玩、怎么生成自己的作品、FAQ
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — 开发规约：环境、边界、提交流程
-- [`AGENTS.md`](AGENTS.md) — AI Agent 接手仓库的第一入口
-- [`CHANGELOG.md`](CHANGELOG.md) — 版本历史
-- [`docs/dev/webgal-script-reference.md`](docs/dev/webgal-script-reference.md) —
-  WebGAL 语法速查表，对照解析器源码核实过，**写代码前先读这个**
-- [`docs/dev/architecture.md`](docs/dev/architecture.md) — 当前真实架构、依赖边界和数据流
-- [`docs/dev/asset-pack-spec.md`](docs/dev/asset-pack-spec.md) — Asset Pack v1 规范草案
-- [`docs/dev/deployment.md`](docs/dev/deployment.md) — 在线演示（demo）的部署与更新方式
-- [`docs/dev/early/`](docs/dev/early/) — 早期规划文档（v1–v9）及其勘误
+测试必须离线（不访问 GitHub 与 LLM 网络）。贡献方式见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 许可
 
-Repo2Gal 采用 GPL-3.0 开源
-WebGAL 引擎保持 MPL-2.0，外部 Asset Pack 保持各自许可证
+- Repo2Gal 程序代码：[GPL-3.0](LICENSE)；
+- WebGAL 引擎：MPL-2.0，保持原许可证；
+- 外部 Asset Pack 保持各自许可证，不因打包而自动变为 GPL。
