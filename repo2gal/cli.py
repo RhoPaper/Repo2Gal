@@ -1,17 +1,31 @@
-"""repo2gal 命令行入口。"""
+"""repo2gal 命令行入口：参数解析与结果渲染。
+
+流程编排全部在 ``pipeline.py``；本文件只做三件事：
+1. 把 CLI 参数映射为 ``RunOptions``；
+2. 调用流水线并转发进度/日志回调；
+3. 按统一错误类型的 exit_code 退出，未预期异常兜底 exit 1。
+"""
 
 from __future__ import annotations
 
-import os
 import sys
+import traceback
 from pathlib import Path
 
 import click
 
-from .fetcher import FetchError, fetch_context, parse_repo
-from .generator import GenerationError, build_cast, build_prompt, call_llm
-from .packager import PackageError, package
-from .validator import sanitize
+from .config import (
+    DEFAULT_LLM_TIMEOUT,
+    default_backup_root,
+    default_output_dir,
+    resolve_api_key,
+    resolve_base_url,
+    resolve_github_token,
+    resolve_model,
+)
+from .errors import Repo2GalError
+from .fetcher import parse_repo
+from .pipeline import RunOptions, run_pipeline
 
 
 def _log(msg: str) -> None:
@@ -46,9 +60,10 @@ def _die(msg: str, code: int) -> None:
 @click.option("--reuse-backup", is_flag=True, help="不联网，复用 --backup-dir 中的已有备份")
 @click.option("--organization", is_flag=True, help="目标 owner 是 GitHub Organization")
 @click.option("--dry-run", is_flag=True, help="只抓数据并打印 prompt，不调用 LLM")
-@click.option("--script", type=click.Path(exists=True), help="跳过 LLM，改用现成脚本文件")
+@click.option("--script", type=click.Path(path_type=Path), help="跳过 LLM，改用现成脚本文件")
 @click.option("--save-prompt", type=click.Path(), help="把 prompt 存盘，便于调试")
 @click.option("--strict", is_flag=True, help="validator 有降级即判失败")
+@click.option("--timeout", default=DEFAULT_LLM_TIMEOUT, show_default=True, help="LLM 请求超时（秒）")
 def main(
     repo,
     output,
@@ -62,6 +77,7 @@ def main(
     script,
     save_prompt,
     strict,
+    timeout,
 ):
     """把 GitHub 仓库变成可游玩的 WebGAL 视觉小说。
 
@@ -69,90 +85,54 @@ def main(
     示例：
       repo2gal vuejs/core
       repo2gal https://github.com/OpenWebGAL/WebGAL --dry-run
+      repo2gal vuejs/core --reuse-backup --script my_story.txt
     """
     try:
         owner, name = parse_repo(repo)
-    except FetchError as exc:
-        _die(str(exc), 2)
+    except Repo2GalError as exc:
+        _die(str(exc), exc.exit_code)
 
-    out_dir = Path(output) if output else Path("output") / name
-    raw_dir = Path(backup_dir) if backup_dir else Path(".repo2gal") / "backups" / owner
+    options = RunOptions(
+        owner=owner,
+        repo=name,
+        output_dir=Path(output) if output else default_output_dir(name),
+        backup_root=Path(backup_dir) if backup_dir else default_backup_root(owner),
+        reuse_backup=reuse_backup,
+        organization=organization,
+        top_threads=threads,
+        token=resolve_github_token(),
+        script=Path(script) if script else None,
+        dry_run=dry_run,
+        strict=strict,
+        save_prompt=Path(save_prompt) if save_prompt else None,
+        base_url=resolve_base_url(base_url),
+        model=resolve_model(model),
+        api_key=resolve_api_key(),
+        llm_timeout=timeout,
+    )
 
-    # --- 1. 抓取 ---
     try:
-        token = os.environ.get("GITHUB_TOKEN")
-        if not token and not reuse_backup:
-            raise FetchError(
-                "未设置 GITHUB_TOKEN；python-github-backup 的完整采集（尤其是 Discussion）"
-                "需要认证"
-            )
-        ctx = fetch_context(
-            owner,
-            name,
-            backup_root=raw_dir,
-            token=token,
-            organization=organization,
-            top_threads=threads,
-            reuse_backup=reuse_backup,
-            log=_log,
-            progress=_progress,
-        )
-    except FetchError as exc:
-        _die(f"抓取失败：{exc}", 3)
+        artifacts = run_pipeline(options, log=_log, warn=_warn, progress=_progress)
+    except Repo2GalError as exc:
+        _die(str(exc), exc.exit_code)
+    except Exception as exc:  # 兜底：未预期异常保持可调试，退出码 1
+        traceback.print_exc()
+        _die(f"内部错误：{type(exc).__name__}: {exc}", 1)
 
-    # --- 2. 构造 prompt ---
-    cast = build_cast(ctx)
-    _log(f"角色表：{'、'.join(sorted(cast.names))}")
-    prompt = build_prompt(ctx, cast)
-
-    if save_prompt:
-        Path(save_prompt).write_text(prompt, encoding="utf-8")
-        _log(f"prompt 已保存至 {save_prompt}（{len(prompt)} 字）")
-
-    if dry_run:
-        click.echo("\n" + "─" * 60)
-        click.echo(prompt)
-        click.echo("─" * 60)
-        _log(f"dry-run 结束，prompt 共 {len(prompt)} 字")
+    if artifacts.output_dir is None:
+        # dry-run 两种形态：只打印 prompt，或只打印校验报告
+        if artifacts.report is None:
+            click.echo("\n" + "─" * 60)
+            click.echo(artifacts.prompt)
+            click.echo("─" * 60)
+            _log(f"dry-run 结束，prompt 共 {len(artifacts.prompt)} 字")
+        else:
+            _log(f"dry-run 校验结束：{artifacts.report.summary()}")
         return
-
-    # --- 3. 生成剧本 ---
-    if script:
-        raw = Path(script).read_text(encoding="utf-8")
-        _log(f"使用现成脚本 {script}")
-    else:
-        _log("调用 LLM 生成剧本，可能需要一两分钟")
-        try:
-            raw = call_llm(prompt, model=model, base_url=base_url)
-        except GenerationError as exc:
-            _die(f"生成失败：{exc}", 4)
-        _log(f"LLM 返回 {len(raw.splitlines())} 行")
-
-    # --- 4. 校验降级 ---
-    clean, report = sanitize(raw, speakers=cast.names)
-    _log(report.summary())
-    for f in report.findings:
-        if f.kind in ("downgrade", "warn"):
-            _warn(f"第 {f.line_no} 行：{f.message}")
-
-    if strict and report.downgrades:
-        _die(f"strict 模式：存在 {report.downgrades} 处降级", 5)
-
-    # --- 5. 打包 ---
-    try:
-        result = package(
-            clean,
-            out_dir,
-            game_name=f"{ctx.full_name} 编年史",
-            game_key=f"repo2gal_{owner}_{name}",
-            log=_log,
-        )
-    except PackageError as exc:
-        _die(f"打包失败：{exc}", 6)
 
     click.echo()
     click.echo(click.style("✓ 完成！", fg="green", bold=True))
-    click.echo(f"  本地预览：python3 -m http.server -d {result} 8000")
+    click.echo(f"  本地预览：python3 -m http.server -d {artifacts.output_dir} 8000")
     click.echo("  然后打开 http://localhost:8000")
 
 

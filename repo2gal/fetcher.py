@@ -26,12 +26,10 @@ from typing import Any, Iterable
 
 import requests
 
+from .errors import FetchError, UsageError
+
 
 GITHUB_REST_API = "https://api.github.com"
-
-
-class FetchError(RuntimeError):
-    """采集失败，且无法继续构建上下文。"""
 
 
 @dataclass
@@ -104,7 +102,7 @@ def parse_repo(url: str) -> tuple[str, str]:
     parts = text.split("/")
     if len(parts) == 2 and all(parts):
         return parts[0], parts[1]
-    raise FetchError(f"无法解析仓库标识：{url!r}（期望 owner/repo 或 GitHub URL）")
+    raise UsageError(f"无法解析仓库标识：{url!r}（期望 owner/repo 或 GitHub URL）")
 
 
 # 不使用 --all：上游的 --all 会额外下载 Release 二进制并读取 hooks，可能需要

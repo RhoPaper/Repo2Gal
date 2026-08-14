@@ -9,8 +9,9 @@ Repo2Gal 把 GitHub 仓库转换为基于 WebGAL 的“可游玩开源项目文�
 当前只实现 Chronicle（编年）模式：使用真实源码、README、Issue、PR、Discussion、wiki
 和 Release 生成项目历史视觉小说。不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
 
-当前稳定基线为 `v0.2.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
-和 WebGAL 产物的端到端实测；v0.2.0 增加采集/下载进度与官方 REST 元数据补充。
+当前稳定基线为 `v0.3.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
+和 WebGAL 产物的端到端实测；v0.2.0 增加采集/下载进度与官方 REST 元数据补充；
+v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI），产品功能与 v0.2.0 一致。
 
 开始工作前必读：
 
@@ -130,20 +131,23 @@ WebGAL 会把未知命令静默解释为 speaker，不会报错。因此“页�
 素材包不得直接使用 WebGAL 目录语义。先使用 `background.archive` 等逻辑 ID，
 再由 WebGAL Adapter 转成 `game/background/archive.webp`。
 
-程序计划采用 GPL 不会自动把外部媒体变成 GPL。必须保留各素材许可证，未来打包器应生成
-`THIRD_PARTY_NOTICES.md`。具体 GPL 版本尚未由根目录 `LICENSE` 锁定，不要擅自宣称
-`GPL-2.0-only`、`GPL-3.0-only` 或 `GPL-3.0-or-later`。
+程序采用 GPL-3.0 不会自动把外部媒体变成 GPL。必须保留各素材许可证，未来打包器应生成
+`THIRD_PARTY_NOTICES.md`。项目根目录 `LICENSE` 已锁定 GPL-3.0。
 
 ## 6. 当前代码地图
 
 | 路径 | 职责 |
 |---|---|
 | `repo2gal/fetcher.py` | github-backup 适配；受控官方 REST 元数据；备份 JSON/Git -> RepoContext |
-| `repo2gal/generator.py` | 确定性选角、上下文渲染、LLM 调用 |
-| `repo2gal/validator.py` | WebGAL 安全子集与静默错误降级 |
+| `repo2gal/generator.py` | 确定性部分：选角（角色表白名单）、上下文渲染、prompt 组装 |
+| `repo2gal/llm.py` | LLM transport 薄客户端：错误包装与脱敏，与 prompt 组装分离 |
+| `repo2gal/validator.py` | WebGAL 安全子集与静默错误降级（硬边界） |
 | `repo2gal/webgal.py` | 从官方 parser 核实的命令常量与转义 |
-| `repo2gal/packager.py` | 官方 WebGAL 发行版缓存、复制和脚本注入 |
-| `repo2gal/cli.py` | CLI 参数与流水线编排 |
+| `repo2gal/packager.py` | 官方 WebGAL 发行版缓存、原子打包、最小 flowchart 生成 |
+| `repo2gal/pipeline.py` | 流程编排唯一持有者：四模式矩阵与阶段产物传递 |
+| `repo2gal/config.py` | 默认值、环境解析与路径常量单一来源 |
+| `repo2gal/errors.py` | 统一错误类型 -> 退出码契约与集中脱敏 |
+| `repo2gal/cli.py` | CLI 参数解析与结果渲染（不含流程逻辑） |
 | `repo2gal/prompts/chronicle.md` | Chronicle 生成约束 |
 | `tests/` | 离线测试，不应依赖 GitHub 或 LLM 网络 |
 
@@ -185,7 +189,6 @@ export REPO2GAL_API_KEY=sk_xxx
 - `python-github-backup` 不落盘仓库列表元数据，目前由一个受控官方 REST 请求补齐。
 - 全量大仓库备份可能很慢、很大；依赖上游增量机制，不自己再写缓存协议。
 - 当前只有 Chronicle 模式和单场景产物。
-- 尚未加入根目录 `LICENSE`，计划采用 GPL 但具体版本待项目所有者确认。
 
 ## 10. 不要做的事
 

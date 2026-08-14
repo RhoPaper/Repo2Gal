@@ -6,8 +6,9 @@
 它为何诞生、经历过哪些争论、社区如何演变。素材来自仓库的真实源码、README、
 Issue、PR、Discussion、wiki 与 Release。
 
-> **当前版本：v0.2.0 Chronicle MVP。** v0.1.0 主流程已于 2026-07-31 在真实 GitHub
-> 仓库和真实 LLM 环境中端到端实测通过；v0.2.0 新增采集/下载进度和官方 REST 元数据补充。
+> **当前版本：v0.3.0 Chronicle MVP。** v0.1.0 主流程已于 2026-07-31 在真实 GitHub
+> 仓库和真实 LLM 环境中端到端实测通过；v0.2.0 新增采集/下载进度和官方 REST 元数据补充；
+> v0.3.0 重构流程架构（见下），产品功能与 v0.2.0 一致。
 
 ### v0.2.0 新增
 
@@ -15,6 +16,18 @@ Issue、PR、Discussion、wiki 与 Release。
 - 下载 WebGAL 官方发行版时显示百分比和已下载体积；
 - 通过官方 GitHub REST API 补齐 description、language、Star、topics、创建时间等仓库概览；
 - 官方 REST 元数据落盘到原始备份，可由 `--reuse-backup` 离线复用。
+
+### v0.3.0 架构重构（行为修正与内部优化）
+
+- 流程从 `cli.py` 抽出为显式管线（`pipeline.py`）：抓取 → 选角 → prompt → 剧本 → 校验 → 打包，
+  每阶段产物显式传递，依赖可注入，全流程可离线端到端测试；
+- 统一错误体系（`errors.py`）：每个错误类型对应固定退出码（见下表），LLM/模板下载的
+  网络异常不再裸 traceback，错误正文统一脱敏；
+- 配置集中（`config.py`）：默认端点/模型/路径单一来源，不再散落各模块；
+- LLM 调用独立为薄客户端（`llm.py`），与确定性 prompt 组装分离；
+- 打包原子化：产物先在同目录 staging 完成再原子替换，失败保留旧产物；
+- 修复流程图缺陷：打包生成只含 `start.txt` 的最小 `flowchart.json`，游戏内可正常打开；
+- 修正 `--dry-run` 语义：与 `--script` 组合时**校验剧本并打印报告**，不再静默忽略。
 
 ## 快速开始
 
@@ -42,10 +55,33 @@ export REPO2GAL_MODEL=deepseek-chat
 ### 不花钱先看看
 
 ```bash
-repo2gal vuejs/core --dry-run              # 只抓数据、打印 prompt
+repo2gal vuejs/core --dry-run              # 只抓数据、打印 prompt，不调用 LLM
 repo2gal vuejs/core --script my_story.txt  # 用手写剧本走完打包流程
 repo2gal vuejs/core --reuse-backup         # 不联网，复用上次原始备份
+repo2gal vuejs/core --dry-run --script my_story.txt  # 只校验剧本并打印报告，不打包
 ```
+
+### 模式矩阵
+
+| `--dry-run` | `--script` | 行为 |
+|---|---|---|
+| ✗ | ✗ | 抓取 → 选角 → prompt → LLM → 校验 → 打包 |
+| ✗ | ✓ | 抓取 → 选角 → 读脚本 → 校验 → 打包 |
+| ✓ | ✗ | 抓取 → 选角 → prompt → 打印 prompt（不调 LLM） |
+| ✓ | ✓ | 抓取 → 选角 → 读脚本 → 校验 → 打印报告（不打包） |
+
+`--strict` 在所有执行校验的路径生效：validator 有任何降级即以退出码 5 结束。
+
+### 退出码
+
+| 类型 | 退出码 | 场景 |
+|---|---|---|
+| 用法错误 | 2 | 参数/模式冲突、仓库标识或 `--script` 无法读取 |
+| 抓取失败 | 3 | `python-github-backup` 采集或备份不可用 |
+| 生成失败 | 4 | LLM 网络/HTTP/格式错误（已脱敏） |
+| 校验失败 | 5 | `--strict` 下 validator 存在降级 |
+| 打包失败 | 6 | 模板下载、产物构建或替换失败 |
+| 内部错误 | 1 | 未预期异常（附完整 traceback） |
 
 ## 工作原理
 
@@ -58,10 +94,14 @@ GitHub REST metadata ─┘    筛选叙事素材      写剧本    收敛降级
 | 模块 | 职责 |
 |---|---|
 | `fetcher.py` | 调用 `python-github-backup`；从官方 REST API 补仓库概览；构建 RepoContext |
-| `generator.py` | 定角色表（确定性）、拼 prompt、调 LLM |
-| `validator.py` | 把脚本收敛到安全语法子集 |
-| `packager.py` | 克隆 WebGAL 发行版模板，注入脚本 |
-| `cli.py` | 串联流程 |
+| `generator.py` | 确定性部分：选角（角色表白名单）、上下文渲染、prompt 组装 |
+| `llm.py` | LLM transport 薄客户端：错误包装与脱敏，与 prompt 组装分离 |
+| `validator.py` | 把脚本收敛到安全语法子集（不可绕过的硬边界） |
+| `packager.py` | WebGAL 发行版缓存、原子打包、最小 flowchart 生成 |
+| `pipeline.py` | 流程编排唯一持有者：四模式矩阵与阶段产物传递 |
+| `config.py` | 默认值、环境解析与路径常量单一来源 |
+| `errors.py` | 统一错误类型 → 退出码契约与集中脱敏 |
+| `cli.py` | 参数解析与结果渲染（不含流程逻辑） |
 
 ### 为什么采集依赖 python-github-backup
 
@@ -114,7 +154,7 @@ validator 在打包前做四件事：
 - 剧情为单场景线性叙事 + 少量分支，未做多场景切分。
 - 全量 Issue/PR/Discussion 备份可能耗时较长，后续运行会使用上游增量备份。
 
-以上均为下一阶段能力或已知产品边界，不影响 v0.2.0 Chronicle MVP 的完整使用。
+以上均为下一阶段能力或已知产品边界，不影响 v0.3.0 Chronicle MVP 的完整使用。
 
 ## 开发
 

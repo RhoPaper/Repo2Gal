@@ -1,32 +1,24 @@
-"""剧本生成：RepoContext -> WebGAL 脚本。
+"""剧本生成的确定性部分：选角、上下文渲染与 prompt 组装。
 
 分两步：
 1. 选角（cast）—— 确定性代码完成，不交给 LLM。
    角色名一旦由 LLM 自由发挥，validator 就无法区分「幻觉命令」和「新角色」，
    所以角色表必须在生成之前就固定下来，并作为白名单传给 validator。
-2. 生成 —— LLM 依据素材写剧本，随后强制过 validator。
+2. prompt 组装 —— 依据素材渲染上下文并套用模板；LLM 调用本身在 ``llm.py``。
+
+本模块不做网络、不做打包；LLM 只负责叙事创作。
 """
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
-import requests
-
+from .config import DEFAULT_BACKGROUNDS, DEFAULT_BGM
 from .fetcher import RepoContext
 
 PROMPT_DIR = Path(__file__).parent / "prompts"
-
-# WebGAL 发行版自带的素材。数量少得可怜，这是当前产物观感的主要瓶颈。
-DEFAULT_BACKGROUNDS = ["bg.webp", "WebGalEnter.webp", "WebGAL_New_Enter_Image.webp"]
-DEFAULT_BGM = ["s_Title.mp3"]
-
-
-class GenerationError(RuntimeError):
-    pass
 
 
 @dataclass
@@ -142,45 +134,3 @@ def build_prompt(
         .replace("{bgm}", "、".join(bgm or DEFAULT_BGM))
         .replace("{context}", render_context(ctx))
     )
-
-
-def call_llm(
-    prompt: str,
-    *,
-    api_key: str | None = None,
-    base_url: str | None = None,
-    model: str | None = None,
-    timeout: int = 300,
-) -> str:
-    """调用 OpenAI 兼容的 Chat Completions 接口。
-
-    刻意不锁定厂商：任何兼容该协议的服务（DeepSeek、Kimi、本地 vLLM 等）
-    都可以通过 REPO2GAL_BASE_URL 接入。
-    """
-    api_key = api_key or os.environ.get("REPO2GAL_API_KEY") or os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise GenerationError("缺少 API Key，请设置环境变量 REPO2GAL_API_KEY")
-
-    base_url = (
-        base_url or os.environ.get("REPO2GAL_BASE_URL") or "https://api.deepseek.com/v1"
-    ).rstrip("/")
-    model = model or os.environ.get("REPO2GAL_MODEL") or "deepseek-v4-pro"
-
-    resp = requests.post(
-        f"{base_url}/chat/completions",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.8,
-        },
-        timeout=timeout,
-    )
-    if not resp.ok:
-        raise GenerationError(f"LLM 返回 {resp.status_code}：{resp.text[:300]}")
-
-    data = resp.json()
-    try:
-        return data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError) as exc:
-        raise GenerationError(f"LLM 响应结构异常：{str(data)[:300]}") from exc

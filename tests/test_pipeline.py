@@ -8,10 +8,13 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import repo2gal.fetcher as fetcher  # noqa: E402
 import repo2gal.packager as packager_module  # noqa: E402
+from repo2gal.errors import PackageError  # noqa: E402
 from repo2gal.fetcher import (  # noqa: E402
     Contributor,
     RepoContext,
@@ -411,3 +414,131 @@ def test_package_overwrites_existing(tmp_path):
 
     out = package("end;\n", out_dir, game_name="T", game_key="k", template=template)
     assert not (out / "stale.txt").exists()
+
+
+# --- 原子替换与流程图（v0.3.0 重构新增行为） ---
+
+def test_package_writes_minimal_flowchart(tmp_path):
+    """模板 flowchart 引用 demo 场景，必须被替换为只含 start.txt 的最小版本。"""
+    import json as json_module
+
+    template = tmp_path / "tpl"
+    (template / "game" / "scene").mkdir(parents=True)
+    (template / "index.html").write_text("<html></html>")
+    (template / "game" / "flowchart.json").write_text(
+        json_module.dumps(
+            {
+                "flowcharts": [
+                    {
+                        "id": "main",
+                        "name": "demo",
+                        "type": "main",
+                        "nodes": [
+                            {
+                                "id": "x",
+                                "type": "chapter",
+                                "position": {"x": 0, "y": 0},
+                                "data": {"label": "演示", "sceneName": "demo_zh_cn.txt"},
+                            }
+                        ],
+                        "edges": [],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    out = package("end;\n", tmp_path / "out", game_name="Test", game_key="k", template=template)
+    flowchart = json_module.loads((out / "game" / "flowchart.json").read_text(encoding="utf-8"))
+
+    scenes = {
+        node["data"]["sceneName"]
+        for chart in flowchart["flowcharts"]
+        for node in chart["nodes"]
+    }
+    assert scenes == {"start.txt"}  # 不再引用任何已删除的 demo 场景
+    assert (out / "game" / "scene" / "start.txt").exists()
+
+
+def test_package_failure_keeps_old_output(tmp_path, monkeypatch):
+    """staging 阶段失败时，旧产物必须原样保留。"""
+    template = tmp_path / "tpl"
+    (template / "game" / "scene").mkdir(parents=True)
+    (template / "index.html").write_text("<html></html>")
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    (out_dir / "precious.txt").write_text("旧产物")
+
+    import repo2gal.packager as packager_module
+
+    def broken_copytree(*args, **kwargs):
+        raise OSError("disk exploded")
+
+    monkeypatch.setattr(packager_module.shutil, "copytree", broken_copytree)
+    with pytest.raises(packager_module.PackageError):
+        package("end;\n", out_dir, game_name="T", game_key="k", template=template)
+
+    assert (out_dir / "precious.txt").read_text(encoding="utf-8") == "旧产物"
+
+
+def test_package_rejects_symlink_output(tmp_path):
+    template = tmp_path / "tpl"
+    (template / "game" / "scene").mkdir(parents=True)
+    (template / "index.html").write_text("<html></html>")
+
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "out"
+    link.symlink_to(real, target_is_directory=True)
+    with pytest.raises(packager_module.PackageError):
+        package("end;\n", link, game_name="T", game_key="k", template=template)
+
+
+def test_ensure_template_network_failure_wraps_package_error(tmp_path, monkeypatch):
+    import requests
+
+    monkeypatch.setattr(packager_module, "cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(
+        packager_module.requests, "get", lambda *a, **kw: (_ for _ in ()).throw(requests.ConnectionError("offline"))
+    )
+    with pytest.raises(packager_module.PackageError):
+        ensure_template()
+
+
+def test_ensure_template_http_failure_wraps_package_error(tmp_path, monkeypatch):
+    class Response:
+        ok = False
+        status_code = 404
+
+    monkeypatch.setattr(packager_module, "cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(packager_module.requests, "get", lambda *a, **kw: Response())
+    with pytest.raises(packager_module.PackageError):
+        ensure_template()
+
+
+def test_ensure_template_hash_mismatch_wraps_package_error(tmp_path, monkeypatch):
+    import io as io_module
+    import zipfile as zipfile_module
+
+    archive = io_module.BytesIO()
+    with zipfile_module.ZipFile(archive, "w") as zf:
+        zf.writestr("index.html", "<html></html>")
+    payload = archive.getvalue()
+
+    class Response:
+        ok = True
+        status_code = 200
+        headers = {"Content-Length": str(len(payload))}
+
+        def iter_content(self, chunk_size):
+            yield payload
+
+    monkeypatch.setattr(packager_module, "cache_dir", lambda: tmp_path)
+    monkeypatch.setattr(packager_module.requests, "get", lambda *a, **kw: Response())
+    monkeypatch.setattr(packager_module, "WEBGAL_SHA256", "0" * 64)
+    with pytest.raises(packager_module.PackageError) as exc:
+        ensure_template()
+    assert "SHA-256" in str(exc.value)
+

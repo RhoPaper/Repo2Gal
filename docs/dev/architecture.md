@@ -2,8 +2,9 @@
 
 > 本文描述**当前实现和已锁定的边界**。历史设想放在 `docs/dev/early/`，不得把早期规划当成现状。
 
-当前基线：`v0.2.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
-环境中端到端实测通过。v0.2.0 增加实时采集/下载进度和官方 GitHub REST 仓库概览。
+当前基线：`v0.3.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
+环境中端到端实测通过。v0.2.0 增加实时采集/下载进度和官方 GitHub REST 仓库概览；
+v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI），产品功能与 v0.2.0 一致。
 
 ## 1. 产品定位
 
@@ -34,13 +35,16 @@ fetcher.context_from_backup()        确定性归一化与热门素材筛选
 RepoContext
        │
        ▼
-generator.build_prompt()             确定性选角 + prompt 组装
+generator.build_cast()               确定性选角（角色表白名单）
        │
        ▼
-OpenAI-compatible LLM                唯一非确定性步骤：写剧本
+generator.build_prompt()             确定性 prompt 组装
        │
        ▼
-validator.sanitize()                 白名单校验、降级、修复死跳转
+OpenAI-compatible LLM                唯一非确定性步骤：写剧本（llm.LLMClient）
+       │
+       ▼
+validator.sanitize()                 白名单校验、降级、修复死跳转（硬边界）
        │
        ▼
 packager.package()                   WebGAL 官方发行版模板克隆与注入
@@ -48,6 +52,9 @@ packager.package()                   WebGAL 官方发行版模板克隆与注入
        ▼
 output/<repo>/                       可由任意静态服务器托管
 ```
+
+整条直线由 `pipeline.py` 编排（四模式矩阵，见 README「模式矩阵」），`cli.py` 只负责
+参数映射与结果渲染。阶段依赖（fetch/LLM/package）可注入，流水线可离线端到端测试。
 
 ## 3. 外部依赖边界
 
@@ -121,11 +128,28 @@ Repo2Gal **不负责**：
 | 文件 | 职责 | 不应承担 |
 |---|---|---|
 | `fetcher.py` | 调上游备份工具；调用受控官方 REST 补充；构建 `RepoContext` | HTML 爬虫、通用 API 客户端 |
-| `generator.py` | 确定性选角、上下文渲染、LLM 调用 | GitHub 抓取、WebGAL 打包 |
+| `generator.py` | 确定性选角、上下文渲染、prompt 组装 | GitHub 抓取、WebGAL 打包、网络调用 |
+| `llm.py` | LLM transport 薄客户端：请求、错误包装、脱敏 | prompt 策略、重试框架 |
 | `validator.py` | WebGAL 安全子集、流程完整性、静默错误降级 | 改写剧情内容 |
 | `webgal.py` | 经源码核实的命令常量与转义 | 猜测引擎语法 |
-| `packager.py` | 获取发行版、覆盖 config/scene、输出静态站点 | 修改 WebGAL 引擎 |
-| `cli.py` | 参数与阶段编排 | 业务逻辑实现 |
+| `packager.py` | 获取发行版、原子替换、最小 flowchart、输出静态站点 | 修改 WebGAL 引擎 |
+| `pipeline.py` | 流程编排唯一持有者：四模式矩阵、阶段产物传递 | 参数解析、终端渲染 |
+| `config.py` | 默认值、环境解析、路径常量、密钥脱敏显示 | 业务逻辑 |
+| `errors.py` | 统一错误类型与退出码契约、错误正文脱敏 | 业务逻辑 |
+| `cli.py` | 参数解析、结果渲染、退出码映射 | 流程逻辑实现 |
+
+## 4.1 错误码契约
+
+每个错误类型固定对应一个 CLI 退出码（`errors.py` 是唯一权威来源）：
+
+| 类型 | 退出码 | 场景 |
+|---|---|---|
+| `UsageError` | 2 | 参数/模式冲突、仓库标识或 `--script` 无法读取 |
+| `FetchError` | 3 | 采集或备份不可用 |
+| `GenerationError` | 4 | LLM 网络/HTTP/格式错误（已脱敏） |
+| `ValidationFailed` | 5 | `--strict` 下 validator 存在降级 |
+| `PackageError` | 6 | 模板下载、产物构建或替换失败 |
+| 未预期异常 | 1 | cli 兜底，附完整 traceback |
 
 ## 5. 原始数据与上下文
 
@@ -186,17 +210,17 @@ AI Provider ──────┘
 
 ## 9. 许可证边界
 
-计划中的分层：
+已锁定的分层：
 
 | 组件 | 许可证 |
 |---|---|
-| Repo2Gal 程序代码 | 计划 GPL，具体版本待根目录 `LICENSE` 锁定 |
+| Repo2Gal 程序代码 | GPL-3.0（根目录 `LICENSE`） |
 | WebGAL | MPL-2.0，保持原许可证 |
 | python-github-backup | MIT |
 | Asset Pack | 各自许可证，必须 SPDX 标识并保留 NOTICE |
 | 用户生成剧本 | 由用户和所用模型条款决定 |
 
-程序采用 GPL 不意味着外部媒体自动变成 GPL。最终打包器未来必须聚合素材包声明并生成
+程序采用 GPL-3.0 不意味着外部媒体自动变成 GPL。最终打包器未来必须聚合素材包声明并生成
 `THIRD_PARTY_NOTICES.md`。
 
 ## 10. 当前状态与下一步
@@ -214,8 +238,10 @@ AI Provider ──────┘
 - 真实仓库 + 真实 LLM + WebGAL 产物端到端验证
 - `github-backup` 实时采集进度与 WebGAL 下载百分比
 - 官方 GitHub REST 仓库概览及离线落盘
+- v0.3.0：显式管线（pipeline.py）、统一错误域（errors.py）、配置集中（config.py）、
+  LLM 薄客户端（llm.py）、原子打包与最小 flowchart、`--dry-run` 模式矩阵语义修正
 
-`v0.2.0` 结论：当前 Chronicle MVP 已可用，不再处于“仅设计”或“待跑通”状态。
+`v0.3.0` 结论：当前 Chronicle MVP 已可用，流程架构完成重构，不再处于“仅设计”或“待跑通”状态。
 
 推荐下一步：
 
