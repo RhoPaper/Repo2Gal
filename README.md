@@ -20,15 +20,58 @@ https://repo2gal.rhopaper.top/demo
 
 ## 特性
 
-- **忠于事实**：剧情素材全部来自仓库真实数据；角色表由代码从贡献者与技术栈推导，
-  不允许 LLM 自行创造角色；
-- **确定性流水线**：采集、选角、校验、打包均由普通代码完成，LLM 只负责写剧本；
-- **安全校验**：所有剧本打包前强制经过 validator，收敛到 WebGAL 语法白名单，
-  未知命令、无效跳转、缺失 `end;` 等自动降级或修复（`--strict` 可拒绝降级产物）；
-- **产物即静态站点**：输出可直接托管，无需服务器；
-- **省钱与离线模式**：`--dry-run`、`--script`、`--reuse-backup` 覆盖不调用 LLM、
-  不联网的完整流程；
-- **原始数据可审计**：完整备份保留在 `.repo2gal/backups/`，可复用、可增量更新。
+`[x]` 已实现，`[ ]` 规划中。规划项的顺序与依据见
+[docs/dev/architecture.md](docs/dev/architecture.md)「当前状态与下一步」。
+
+### 数据采集
+
+- [x] 全量仓库数据采集：源码、Issue、PR、Discussion、wiki、Release、label、milestone
+- [x] 官方 GitHub REST 仓库概览补充（Star、topics、语言、创建时间等），落盘可离线复用
+- [x] 上游增量备份与 `--reuse-backup` 离线复用
+- [x] 采集进度实时显示
+- [x] 叙事素材筛选与上下文构建：热门讨论、README/wiki 摘录、语言检测、贡献者统计
+- [ ] Release 资产与附件下载（显式选项）
+
+### 剧本生成
+
+- [x] Chronicle 模式剧本生成（单场景线性叙事 + 少量分支）
+- [x] 确定性角色表白名单（项目化身 / 核心贡献者 / 技术栈精灵）
+- [x] 任意 OpenAI 兼容端点（`--base-url` / `--model` / 环境变量）
+- [x] `--dry-run` / `--script` / `--save-prompt` 省钱与离线路径
+- [ ] LLM 失败自动重试（需依赖调研记录）
+- [ ] 多场景 / 多章节剧情切分
+- [ ] Chronicle 之外的游戏模式
+
+### 校验与安全
+
+- [x] WebGAL 语法白名单校验与静默降级（validator，不可绕过）
+- [x] 死跳转修复、Markdown 噪声剥离、缺 `end;` 自动补齐
+- [x] `--strict` 严格模式：存在降级即拒绝打包（退出码 5）
+
+### 打包与产物
+
+- [x] 固定版本 WebGAL 官方发行版缓存（SHA-256 校验 + 下载进度）
+- [x] 原子打包：staging + 替换，失败保留旧产物
+- [x] 最小 flowchart 生成（当前单场景，仅入口节点）
+- [ ] 多场景流程图生成器
+- [ ] `THIRD_PARTY_NOTICES.md` 素材声明聚合
+- [ ] 部署配置（vercel.json）随产物生成
+
+### 素材系统
+
+- [x] Asset Pack v1 规范草案（引擎无关、SPDX、provenance）
+- [ ] Local Provider（本地素材包）
+- [ ] Git Provider（开源素材包下载）
+- [ ] AI Provider（AI 生成素材）
+
+### 工程质量
+
+- [x] 统一错误体系与退出码契约、错误信息脱敏
+- [x] 显式管线（pipeline）与可注入依赖，全流程可离线端到端测试
+- [x] 离线测试套件（84 项）
+- [x] 文档体系：用户指南、开发规约、Agent 指南、部署文档
+- [ ] python-github-backup 真实 fixture 回归样本
+- [ ] 真实 LLM golden cases 评测集
 
 ## 安装
 
@@ -148,8 +191,7 @@ return SCRIPT_CONFIG_MAP.get(command)?.scriptType ?? commandType.say;  // 默认
 
 ## 限制
 
-- Asset Pack 仅有规范草案，尚未实现，当前使用 WebGAL 内置素材（3 张背景、1 首 BGM）；
-- 仅 Chronicle 一种模式，剧情为单场景线性叙事加少量分支；
+- 当前使用 WebGAL 内置素材（3 张背景、1 首 BGM），观感受限，Asset Pack 实现后改善；
 - 全量 Issue/PR/Discussion 备份首次可能较慢，后续运行使用上游增量备份。
 
 ## 文档
