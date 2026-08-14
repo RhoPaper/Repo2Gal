@@ -6,6 +6,25 @@
 它为何诞生、经历过哪些争论、社区如何演变。素材来自仓库的真实源码、README、
 Issue、PR、Discussion、wiki 与 Release。
 
+## 🎮 在线体验
+
+刚看完宣发视频？直接玩由 Repo2Gal 自己生成的演示作品（dogfooding 产物，
+就是本项目 Repo2Gal 的编年史）：
+
+**👉 https://repo2gal.rhopaper.top/demo**
+
+> 演示作品由当前版本代码 + 本仓库真实数据生成，部署在 Vercel，经 Cloudflare 域名
+> `repo2gal.rhopaper.top` 提供访问；部署方式见 [`docs/dev/deployment.md`](docs/dev/deployment.md)。
+
+## 📚 按角色找文档
+
+| 你是谁 | 从这里开始 |
+|---|---|
+| 🎮 **用户**（想玩 / 想把自己的仓库变成游戏） | [`docs/user-guide.md`](docs/user-guide.md) 用户指南；上面就是在线 demo |
+| 👨‍💻 **开发者**（想运行、修改、贡献代码） | [`CONTRIBUTING.md`](CONTRIBUTING.md) 开发规约；[`docs/dev/architecture.md`](docs/dev/architecture.md) 架构 |
+| 🤖 **Agent**（AI 助手接手仓库） | [`AGENTS.md`](AGENTS.md) 是给你的第一入口 |
+| 🕓 **历史与版本** | [`CHANGELOG.md`](CHANGELOG.md) |
+
 > **当前版本：v0.3.0 Chronicle MVP。** v0.1.0 主流程已于 2026-07-31 在真实 GitHub
 > 仓库和真实 LLM 环境中端到端实测通过；v0.2.0 新增采集/下载进度和官方 REST 元数据补充；
 > v0.3.0 重构流程架构（见下），产品功能与 v0.2.0 一致。
@@ -165,10 +184,15 @@ validator 在打包前做四件事：
 
 ## 文档
 
+- [`docs/user-guide.md`](docs/user-guide.md) — 用户指南：怎么玩、怎么生成自己的作品、FAQ
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — 开发规约：环境、边界、提交流程
+- [`AGENTS.md`](AGENTS.md) — AI Agent 接手仓库的第一入口
+- [`CHANGELOG.md`](CHANGELOG.md) — 版本历史
 - [`docs/dev/webgal-script-reference.md`](docs/dev/webgal-script-reference.md) —
   WebGAL 语法速查表，对照解析器源码核实过，**写代码前先读这个**
 - [`docs/dev/architecture.md`](docs/dev/architecture.md) — 当前真实架构、依赖边界和数据流
 - [`docs/dev/asset-pack-spec.md`](docs/dev/asset-pack-spec.md) — Asset Pack v1 规范草案
+- [`docs/dev/deployment.md`](docs/dev/deployment.md) — 在线演示（demo）的部署与更新方式
 - [`docs/dev/early/`](docs/dev/early/) — 早期规划文档（v1–v9）及其勘误
 
 ## 许可

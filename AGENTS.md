@@ -13,12 +13,16 @@ Repo2Gal 把 GitHub 仓库转换为基于 WebGAL 的“可游玩开源项目文�
 和 WebGAL 产物的端到端实测；v0.2.0 增加采集/下载进度与官方 REST 元数据补充；
 v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI），产品功能与 v0.2.0 一致。
 
+在线演示（dogfooding 产物）：https://repo2gal.rhopaper.top/demo ，
+部署与更新方式见 `docs/dev/deployment.md`。
+
 开始工作前必读：
 
 1. `README.md`
 2. `docs/dev/architecture.md`
 3. `docs/dev/webgal-script-reference.md`
 4. 涉及素材时读 `docs/dev/asset-pack-spec.md`
+5. `CONTRIBUTING.md`（开发规约与提交流程）
 
 `docs/dev/early/` 仅为历史决策轨迹，其中含已知技术错误。不得把它当当前规范。
 
