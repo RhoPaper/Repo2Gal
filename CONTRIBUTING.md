@@ -17,7 +17,7 @@ CLI 冒烟（不联网、不花钱）：
 .venv/bin/repo2gal RhoPaper/Repo2Gal --reuse-backup --script my_story.txt --dry-run
 ```
 
-> 在线演示：https://repo2gal.rhopaper.top/demo（dogfooding 产物，部署见
+> 在线演示：[https://repo2gal.rhopaper.top/demo](https://repo2gal.rhopaper.top/demo)（dogfooding 产物，部署见
 > `docs/dev/deployment.md`）。
 
 ## 必读文档
