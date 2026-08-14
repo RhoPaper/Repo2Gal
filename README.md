@@ -133,5 +133,5 @@ validator 在打包前做四件事：
 
 ## 许可
 
-Repo2Gal 计划采用 GPL 开源，具体 GPL 版本将在加入根目录 `LICENSE` 时锁定。
-WebGAL 引擎保持 MPL-2.0；外部 Asset Pack 保持各自许可证，不因打包而自动变成 GPL。
+Repo2Gal 采用 GPL-3.0 开源
+WebGAL 引擎保持 MPL-2.0，外部 Asset Pack 保持各自许可证
