@@ -68,7 +68,7 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] 统一错误体系与退出码契约、错误信息脱敏
 - [x] 显式管线（pipeline）与可注入依赖，全流程可离线端到端测试
-- [x] 离线测试套件（84 项）
+- [x] 离线测试套件（85 项）
 - [x] 文档体系：用户指南、开发规约、Agent 指南、部署文档
 - [ ] python-github-backup 真实 fixture 回归样本
 - [ ] 真实 LLM golden cases 评测集
