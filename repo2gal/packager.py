@@ -24,8 +24,10 @@ from pathlib import Path
 
 import requests
 
+from .asset_pack import AssetPack
 from .config import webgal_cache_dir as cache_dir
 from .errors import PackageError, redact_error
+from .webgal_assets import install_asset_pack, rewrite_script, write_third_party_notices
 
 WEBGAL_VERSION = "4.6.2"
 WEBGAL_ASSET = f"WebGAL-{WEBGAL_VERSION}-web.zip"
@@ -159,6 +161,7 @@ def package(
     game_name: str,
     game_key: str,
     template: Path | None = None,
+    asset_pack: AssetPack | None = None,
     log=lambda _m: None,
 ) -> Path:
     """把脚本注入模板副本，产出可直接托管的静态目录。
@@ -190,6 +193,16 @@ def package(
             stale.unlink()
         for stale in scene_dir.glob("function_test.txt"):
             stale.unlink()
+
+        if asset_pack is not None:
+            install_asset_pack(staging, asset_pack)
+            script = rewrite_script(script, asset_pack)
+            log(f"已安装素材包 {asset_pack.name}@{asset_pack.version}")
+        write_third_party_notices(
+            staging,
+            webgal_version=WEBGAL_VERSION,
+            pack=asset_pack,
+        )
 
         # start.txt 是引擎固定入口
         (scene_dir / "start.txt").write_text(script, encoding="utf-8")

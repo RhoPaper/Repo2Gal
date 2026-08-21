@@ -1,0 +1,78 @@
+{
+  "$schema": "https://repo2gal.dev/schemas/asset-pack/v1.json",
+  "manifestVersion": 1,
+  "name": "@repo2gal/example-cc0-chronicle",
+  "version": "1.0.0",
+  "displayName": "Repo2Gal Chronicle Starter Pack",
+  "description": "用于编年模式的深色档案馆、社区房间、引导者立绘和氛围音乐。",
+  "authors": [
+    {
+      "name": "RhoPaper"
+    }
+  ],
+  "license": {
+    "spdx": "CC0-1.0",
+    "file": "LICENSE"
+  },
+  "keywords": [
+    "chronicle",
+    "developer",
+    "archive"
+  ],
+  "locale": "zh-CN",
+  "profiles": [
+    "repo2gal.chronicle"
+  ],
+  "theme": {
+    "palette": {
+      "primary": "#7C3AED",
+      "secondary": "#22D3EE",
+      "background": "#09090B",
+      "surface": "#18181B",
+      "text": "#FAFAFA",
+      "mutedText": "#A1A1AA",
+      "success": "#22C55E",
+      "warning": "#F59E0B",
+      "danger": "#EF4444"
+    }
+  },
+  "assets": {
+    "background.archive": {
+      "type": "background",
+      "file": "backgrounds/archive.png",
+      "mimeType": "image/png",
+      "width": 1672,
+      "height": 941,
+      "sha256": "ae4e9b9a42d7b9e9b517f73f475551bc1046c13c9da4480e8782a4c6b713aa93"
+    },
+    "background.community": {
+      "type": "background",
+      "file": "backgrounds/community.png",
+      "mimeType": "image/png",
+      "width": 1586,
+      "height": 992,
+      "sha256": "1dd4ee691bde30027e29487b922d51e79b4265e162a525944d5ce73bbeeb0504"
+    },
+    "character.guide.normal": {
+      "type": "character",
+      "file": "characters/guide/normal.png",
+      "mimeType": "image/png",
+      "width": 1023,
+      "height": 1537,
+      "sha256": "4431f72b91d07b0222c594b96d0246fda7f75d11a1eb3969e5f9919b2cbff515",
+      "character": "guide",
+      "emotion": "normal"
+    },
+    "bgm.archive": {
+      "type": "bgm",
+      "file": "audio/archive.ogg",
+      "mimeType": "audio/ogg",
+      "sha256": "5d40aed042fa1e807e7ad99ba6cd1a70afbeddb05a96197be086de1e993516ee",
+      "loop": true
+    }
+  },
+  "provenance": {
+    "sourceType": "manual",
+    "createdAt": "2026-08-01T00:00:00Z"
+  }
+}

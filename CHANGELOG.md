@@ -2,6 +2,23 @@
 
 本文件记录面向用户可感知的变化。内部重构细节见各版本提交历史。
 
+## v0.4.0 — 2026-08-21
+
+**Asset Pack v1 本地单包闭环**：
+
+- 新增随 wheel 分发的 Draft 2020-12 Schema，以及 SemVer、SPDX expression、BCP 47、
+  CSS Color、magic MIME、SHA-256、Profile 和公开授权策略校验；
+- 新增 `repo2gal assets init/validate` Local Provider 命令，以及生成命令的 `--asset-pack`
+  和 `--public-assets`；原有 `repo2gal owner/repo` 命令形态保持兼容；
+- 剧本使用引擎无关逻辑 ID，validator 新增素材存在性/类型校验并安全放行 `changeFigure`；
+- 新增 WebGAL Adapter，在原子 staging 中复制 background/character/bgm、重写裸文件名，
+  打包前二次检查 SHA-256，拒绝符号链接、路径穿越和模板覆盖；
+- 所有产物生成 `THIRD_PARTY_NOTICES.md` 并附 MPL-2.0 正文；使用素材包时另保留原始
+  manifest、LICENSE、NOTICE 和 evidence；
+- 加入 RhoPaper 制作并以 CC0-1.0 提供的 Chronicle 示例包；BGM 转为 OGG 后整包约 7.7 MiB，
+  不传素材包时仍保留 WebGAL 默认素材；
+- 依赖调研与实现边界落盘，离线测试从 85 项扩充到 119 项。
+
 ## v0.3.0 — 2026-08-14
 
 **流程架构重构**（产品功能与 v0.2.0 一致，行为修正与内部优化）：

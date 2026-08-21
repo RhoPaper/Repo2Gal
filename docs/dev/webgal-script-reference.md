@@ -213,6 +213,7 @@ Enable_flowchart:true;
 ```
 ;=== 允许使用的全部语法 ===
 changeBg:文件名.webp -next;
+changeFigure:立绘文件名.webp -left;
 bgm:文件名.mp3;
 角色名:台词;
 say:旁白;
@@ -224,3 +225,7 @@ end;
 ```
 
 不在此列的一律由 validator 降级为旁白，绝不放行到产物里。
+
+使用 Asset Pack 时，LLM 与 validator 阶段的三个资源参数是逻辑 ID（例如
+`changeBg:background.archive;`），打包阶段再由 `webgal_assets.py` 改写成上述裸文件名。
+未声明 ID 或素材类型错配会被 validator 注释降级，不会进入 WebGAL 产物。

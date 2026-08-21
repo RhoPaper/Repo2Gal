@@ -7,7 +7,7 @@
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest tests/ -q      # 85 项离线测试，数秒内完成
+.venv/bin/python -m pytest tests/ -q      # 119 项离线测试，数秒内完成
 ```
 
 CLI 冒烟（不联网、不花钱）：
@@ -26,7 +26,8 @@ CLI 冒烟（不联网、不花钱）：
 |---|---|
 | `docs/dev/architecture.md` | 当前真实架构、数据流、依赖边界、错误码契约 |
 | `docs/dev/webgal-script-reference.md` | 对照 parser 源码核实的 WebGAL 语法，**改生成/校验前先读** |
-| `docs/dev/asset-pack-spec.md` | Asset Pack 规范草案与实现状态 |
+| `docs/dev/asset-pack-spec.md` | Asset Pack 规范与当前实现范围 |
+| `docs/dev/asset-pack-dependencies.md` | Asset Pack 标准校验依赖调研与安全边界 |
 | `AGENTS.md` | 面向 AI Agent 的仓库交接指南（边界与代码地图） |
 
 ## 不可破坏的边界（摘录自 AGENTS.md）
@@ -55,6 +56,8 @@ repo2gal/
 ├── validator.py   WebGAL 安全子集与静默错误降级（硬边界）
 ├── webgal.py      经 parser 源码核实的命令常量与转义
 ├── packager.py    模板缓存（SHA-256）、原子打包、最小 flowchart
+├── asset_pack.py  Asset Pack Schema、本地安全/授权/完整性校验与 init
+├── webgal_assets.py  逻辑 ID 映射、素材复制、脚本重写与 notices
 ├── config.py      默认值、环境解析、路径常量
 ├── errors.py      错误类型 -> 退出码契约与集中脱敏
 └── prompts/       Chronicle 生成约束模板
@@ -65,6 +68,8 @@ repo2gal/
 - 单元测试必须**离线**：不访问 GitHub 或 LLM 网络；外部工具用 fake/monkeypatch；
 - 网络验证（真实采集、真实 LLM、部署）显式执行，不计入常规套件；
 - 涉及 WebGAL 语法改动必须对照 `docs/dev/webgal-script-reference.md` 与官方 parser 源码。
+- Asset Pack 测试需要系统 `libmagic`（Debian/Ubuntu 包名 `libmagic1`），不得改为按扩展名猜 MIME；
+- 素材测试使用微型 fixture 或 `builtin:cc0-chronicle`，不访问 Git/AI Provider 网络。
 
 ## 提交流程
 

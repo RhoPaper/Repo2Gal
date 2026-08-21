@@ -56,6 +56,7 @@ def test_cli_maps_options_into_run_options(monkeypatch, tmp_path):
     script.write_text("end;\n", encoding="utf-8")
     output = tmp_path / "custom-out"
     backup = tmp_path / "custom-backup"
+    asset_pack = tmp_path / "custom-assets"
 
     result = CliRunner().invoke(
         cli.main,
@@ -70,6 +71,8 @@ def test_cli_maps_options_into_run_options(monkeypatch, tmp_path):
             "--backup-dir", str(backup),
             "--model", "custom-model",
             "--base-url", "https://custom.example/v1",
+            "--asset-pack", str(asset_pack),
+            "--public-assets",
         ],
     )
 
@@ -85,6 +88,8 @@ def test_cli_maps_options_into_run_options(monkeypatch, tmp_path):
     assert options.backup_root == backup
     assert options.model == "custom-model"
     assert options.base_url == "https://custom.example/v1"
+    assert options.asset_pack == asset_pack
+    assert options.public_assets is True
     assert "✓ 完成" in result.output
 
 
@@ -150,3 +155,28 @@ def test_cli_invalid_repo_exits_2():
 def test_cli_missing_repo_argument_exits_2():
     result = CliRunner().invoke(cli.main, [])
     assert result.exit_code == 2
+
+
+def test_assets_init_and_validate_commands(tmp_path):
+    root = tmp_path / "new-pack"
+    runner = CliRunner()
+    initialized = runner.invoke(cli.main, ["assets", "init", str(root)])
+    assert initialized.exit_code == 0, initialized.output
+    assert (root / "repo2gal-pack.json").exists()
+
+    validated = runner.invoke(cli.main, ["assets", "validate", str(root)])
+    assert validated.exit_code == 0, validated.output
+    assert "素材包校验通过" in validated.output
+
+    public = runner.invoke(cli.main, ["assets", "validate", str(root), "--public"])
+    assert public.exit_code == 2
+    assert "公开发布模式" in public.output
+
+
+def test_assets_validate_built_in_example_in_public_mode():
+    result = CliRunner().invoke(
+        cli.main, ["assets", "validate", "builtin:cc0-chronicle", "--public"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "CC0" not in result.output  # CLI 只报告校验结果，不复制或改写授权文本。
+    assert "公开发布" in result.output

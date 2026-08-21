@@ -52,6 +52,7 @@ SAFE_COMMANDS: frozenset[str] = frozenset(
     {
         "say",
         "changeBg",
+        "changeFigure",
         "bgm",
         "intro",
         "label",

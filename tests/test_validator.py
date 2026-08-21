@@ -124,6 +124,40 @@ def test_inline_comment_preserved():
     assert "changeBg:bg.webp;" in out
 
 
+def test_change_figure_is_safe_when_asset_is_declared():
+    assets = {
+        "changeBg": frozenset(),
+        "changeFigure": frozenset({"character.guide.normal"}),
+        "bgm": frozenset(),
+    }
+    out, rep = run("changeFigure:character.guide.normal -left;\nend;\n", assets=assets)
+    assert "changeFigure:character.guide.normal -left;" in out
+    assert rep.downgrades == 0
+
+
+def test_unknown_asset_reference_is_commented_out():
+    assets = {
+        "changeBg": frozenset({"background.archive"}),
+        "changeFigure": frozenset(),
+        "bgm": frozenset({"bgm.archive"}),
+    }
+    out, rep = run("changeBg:background.missing;\nend;\n", assets=assets)
+    assert out.splitlines()[0].startswith(";[repo2gal]")
+    assert rep.downgrades == 1
+
+
+def test_asset_type_mismatch_is_rejected():
+    assets = {
+        "changeBg": frozenset({"background.archive"}),
+        "changeFigure": frozenset(),
+        "bgm": frozenset({"bgm.archive"}),
+    }
+    out, rep = run("bgm:background.archive;\nend;\n", assets=assets)
+    assert "bgm:background.archive" in out.splitlines()[0]
+    assert out.splitlines()[0].startswith(";[repo2gal]")
+    assert rep.downgrades == 1
+
+
 def test_leading_semicolon_comment_kept():
     out, _ = run(";这是注释\nend;\n")
     assert ";这是注释" in out

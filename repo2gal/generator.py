@@ -125,12 +125,16 @@ def build_prompt(
     cast: Cast,
     *,
     backgrounds: list[str] | None = None,
+    figures: list[str] | None = None,
     bgm: list[str] | None = None,
 ) -> str:
     template = (PROMPT_DIR / "chronicle.md").read_text(encoding="utf-8")
+    background_names = DEFAULT_BACKGROUNDS if backgrounds is None else backgrounds
+    bgm_names = DEFAULT_BGM if bgm is None else bgm
     return (
         template.replace("{characters}", cast.render())
-        .replace("{backgrounds}", "、".join(backgrounds or DEFAULT_BACKGROUNDS))
-        .replace("{bgm}", "、".join(bgm or DEFAULT_BGM))
+        .replace("{backgrounds}", "、".join(background_names) or "（无）")
+        .replace("{figures}", "、".join(figures or []) or "（无）")
+        .replace("{bgm}", "、".join(bgm_names) or "（无）")
         .replace("{context}", render_context(ctx))
     )

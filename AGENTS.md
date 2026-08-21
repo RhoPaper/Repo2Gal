@@ -9,9 +9,9 @@ Repo2Gal 把 GitHub 仓库转换为基于 WebGAL 的“可游玩开源项目文�
 当前只实现 Chronicle（编年）模式：使用真实源码、README、Issue、PR、Discussion、wiki
 和 Release 生成项目历史视觉小说。不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
 
-当前稳定基线为 `v0.3.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
-和 WebGAL 产物的端到端实测；v0.2.0 增加采集/下载进度与官方 REST 元数据补充；
-v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI），产品功能与 v0.2.0 一致。
+当前稳定基线为 `v0.4.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
+和 WebGAL 产物的端到端实测；v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI）；
+v0.4.0 实现 Asset Pack v1 本地单包闭环与内置 CC0 Chronicle 示例包。
 
 在线演示（dogfooding 产物）：https://repo2gal.rhopaper.top/demo ，
 部署与更新方式见 `docs/dev/deployment.md`。
@@ -121,7 +121,8 @@ WebGAL 会把未知命令静默解释为 speaker，不会报错。因此“页�
 
 ## 5. 素材系统约束
 
-素材获取有三类 Provider：Local、Git、AI。三者必须输出同一种引擎无关 Asset Pack。
+素材获取规划有三类 Provider：Local、Git、AI。当前只实现 Local；三者最终必须输出同一种
+引擎无关 Asset Pack。
 
 每个素材包必须包含：
 
@@ -135,8 +136,9 @@ WebGAL 会把未知命令静默解释为 speaker，不会报错。因此“页�
 素材包不得直接使用 WebGAL 目录语义。先使用 `background.archive` 等逻辑 ID，
 再由 WebGAL Adapter 转成 `game/background/archive.webp`。
 
-程序采用 GPL-3.0 不会自动把外部媒体变成 GPL。必须保留各素材许可证，未来打包器应生成
-`THIRD_PARTY_NOTICES.md`。项目根目录 `LICENSE` 已锁定 GPL-3.0。
+程序采用 GPL-3.0 不会自动把外部媒体变成 GPL。必须保留各素材许可证；v0.4.0 打包器会
+生成 `THIRD_PARTY_NOTICES.md`、补入 MPL-2.0 正文并保留素材原始授权材料。项目根目录
+`LICENSE` 已锁定 GPL-3.0。
 
 ## 6. 当前代码地图
 
@@ -148,6 +150,8 @@ WebGAL 会把未知命令静默解释为 speaker，不会报错。因此“页�
 | `repo2gal/validator.py` | WebGAL 安全子集与静默错误降级（硬边界） |
 | `repo2gal/webgal.py` | 从官方 parser 核实的命令常量与转义 |
 | `repo2gal/packager.py` | 官方 WebGAL 发行版缓存、原子打包、最小 flowchart 生成 |
+| `repo2gal/asset_pack.py` | Asset Pack Schema、本地安全/授权/MIME/SHA/Profile 校验与 init |
+| `repo2gal/webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写与第三方声明聚合 |
 | `repo2gal/pipeline.py` | 流程编排唯一持有者：四模式矩阵与阶段产物传递 |
 | `repo2gal/config.py` | 默认值、环境解析与路径常量单一来源 |
 | `repo2gal/errors.py` | 统一错误类型 -> 退出码契约与集中脱敏 |
@@ -188,8 +192,9 @@ export REPO2GAL_API_KEY=sk_xxx
 
 ## 9. 已知风险与待办
 
-- Asset Pack 只有规范草案，尚未实现。
-- WebGAL 默认素材只有 3 张背景和 1 首 BGM。
+- Asset Pack 当前只支持一个本地目录包和 background/character/bgm；Git/AI Provider、
+  多包组合、字体/UI/音效/视频 Adapter 尚未实现。
+- 不传 `--asset-pack` 时 WebGAL 默认素材仍只有 3 张背景和 1 首 BGM。
 - `python-github-backup` 不落盘仓库列表元数据，目前由一个受控官方 REST 请求补齐。
 - 全量大仓库备份可能很慢、很大；依赖上游增量机制，不自己再写缓存协议。
 - 当前只有 Chronicle 模式和单场景产物。

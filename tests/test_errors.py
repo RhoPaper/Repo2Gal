@@ -1,6 +1,7 @@
 """统一错误体系与脱敏的离线测试。"""
 
 from repo2gal.errors import (
+    AssetPackError,
     FetchError,
     GenerationError,
     PackageError,
@@ -18,10 +19,11 @@ def test_exit_code_contract():
     assert GenerationError.exit_code == 4
     assert ValidationFailed.exit_code == 5
     assert PackageError.exit_code == 6
+    assert AssetPackError.exit_code == 2
 
 
 def test_errors_are_repo2gal_errors():
-    for error in (UsageError, FetchError, GenerationError, ValidationFailed, PackageError):
+    for error in (AssetPackError, UsageError, FetchError, GenerationError, ValidationFailed, PackageError):
         assert issubclass(error, Repo2GalError)
 
 

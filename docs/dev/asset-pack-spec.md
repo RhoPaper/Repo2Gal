@@ -1,6 +1,10 @@
-# Repo2Gal Asset Pack v1 规范草案
+# Repo2Gal Asset Pack v1 规范
 
-> 状态：**设计已确认，尚未实现。** 本文用于约束后续实现，不代表当前 CLI 已支持素材包。
+> 状态：**v0.4.0 已实现本地单包闭环。** JSON Schema、Local Provider、Validator、
+> WebGAL Adapter 与 `THIRD_PARTY_NOTICES.md` 已可用；Git/AI Provider、多包组合以及字体/UI
+> Adapter 仍是计划，不能写成现有能力。
+
+当前机器可读 Schema 随 Python 包分发：`repo2gal/schemas/asset-pack-v1.schema.json`。
 
 ## 1. 目标
 
@@ -191,7 +195,7 @@ my-asset-pack/
 }
 ```
 
-打包器未来必须汇总所有 `attribution` 和许可证，生成 `THIRD_PARTY_NOTICES.md`。
+打包器必须汇总所有 `attribution` 和许可证，生成 `THIRD_PARTY_NOTICES.md`；v0.4.0 已实现。
 
 ### 5.3 本地私有素材
 
@@ -204,14 +208,18 @@ Provider 的职责只有两个：获取素材、产出合规 Asset Pack。核心
 
 ### 6.1 Local Provider
 
-计划命令：
+已实现命令：
 
 ```bash
 repo2gal assets init ./my-pack
 repo2gal assets validate ./my-pack
+repo2gal assets validate ./my-pack --public
+repo2gal owner/repo --asset-pack ./my-pack --public-assets
 ```
 
-`init` 生成最小目录、manifest、LICENSE 和 NOTICE 模板；`validate` 执行 Schema、文件和授权检查。
+`init` 生成最小目录、manifest、LICENSE 和 NOTICE 模板，且绝不覆盖非空目录；`validate`
+执行 Schema、文件和授权检查。默认按本地使用校验，允许 `LicenseRef-Proprietary`；`--public`
+和生成命令的 `--public-assets` 会拒绝全部 `LicenseRef-*`。
 
 ### 6.2 Git Provider
 
@@ -291,7 +299,14 @@ MIDI 只包含音符和控制信息，最终音频还依赖 SoundFont、采样�
 | `repo2gal.chronicle` | 编年模式所需背景、BGM、角色 |
 | `repo2gal.complete` | 可独立生成完整游戏 |
 
-MVP 先支持一个完整包，不实现依赖解析和多包覆盖。多包组合应在有真实需求后再设计。
+MVP 只支持一个完整目录包，不实现依赖解析和多包覆盖。多包组合应在有真实需求后再设计。
+
+v0.4.0 WebGAL Adapter 接受 `background`、`character`、`bgm`，分别映射到
+`game/background/`、`game/figure/`、`game/bgm/`。逻辑 ID 全量进入目标文件名，例如
+`character.guide.normal` 映射为 `character-guide-normal.png`；这避免末段同名和模板覆盖。
+每个逻辑 ID 必须以自身素材类型和点号开头（例如 `background.*`），从语义上隔离 WebGAL
+默认裸文件名，禁止素材包静默遮蔽 `bg.webp`、`s_Title.mp3` 等默认资源。
+字体、UI、音效与视频的容器语义保留在路线图中，当前 Schema 不接受这些尚无 Adapter 的类型。
 
 ## 9. Validator 最低要求
 
@@ -308,14 +323,26 @@ Asset Pack v1 实现不得缺少以下校验：
 9. 公共发布模式下拒绝许可证不明确和 `LicenseRef-Proprietary`；
 10. 不执行包内脚本，生成脚本只作为可审计源码保存。
 
+当前额外资源上限：manifest 1 MiB、最多 256 个素材、媒体单文件 128 MiB、授权/审计材料
+单文件 8 MiB 且最多 512 个、全部声明文件总计 512 MiB。JSON loader 在 Schema 前拒绝
+重复键；路径必须为 POSIX 相对路径，包根、素材、LICENSE、NOTICE、evidence 与 AI
+`promptFile` 均不能是符号链接。MIME 使用 `libmagic` 检查内容而不是按扩展名猜测。
+
+读取与复制使用逐级 `openat` + `O_NOFOLLOW`；打包时从同一个已打开源文件描述符一边计算
+SHA-256 一边写入以 `O_EXCL` 创建的目标，避免“先检查再复制”的竞态。缺少上述 OS 能力的
+平台会拒绝 Asset Pack，但不影响不使用素材包的默认流程。
+
 ## 10. 实现顺序
 
-1. `schemas/asset-pack-v1.schema.json`；
-2. Local Provider 的 `assets init`；
-3. Validator；
-4. WebGAL Adapter；
-5. 自动生成 `THIRD_PARTY_NOTICES.md`；
-6. Git Provider；
-7. AI Provider。
+1. [x] `repo2gal/schemas/asset-pack-v1.schema.json`；
+2. [x] Local Provider 的 `assets init` / `assets validate`；
+3. [x] Schema、路径、MIME、SHA、Profile 与授权 Validator；
+4. [x] background / character / bgm WebGAL Adapter；
+5. [x] 自动生成 `THIRD_PARTY_NOTICES.md` 并保留原始授权材料；
+6. [ ] Git Provider；
+7. [ ] AI Provider；
+8. [ ] 字体、UI、音效、视频 Adapter；
+9. [ ] 有真实需求后再设计多包组合。
 
-在 Local Provider + Validator 跑通之前，不要先做在线素材市场或复杂依赖解析。
+Local Provider + Validator 已跑通；在 Git Provider 也出现真实多包需求之前，不做在线素材市场
+或复杂依赖解析。

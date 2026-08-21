@@ -14,7 +14,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .config import DEFAULT_BASE_URL, DEFAULT_LLM_TIMEOUT, DEFAULT_MODEL
+from .asset_pack import AssetPack, load_asset_pack
+from .config import (
+    DEFAULT_BACKGROUNDS,
+    DEFAULT_BASE_URL,
+    DEFAULT_BGM,
+    DEFAULT_LLM_TIMEOUT,
+    DEFAULT_MODEL,
+)
 from .errors import UsageError, ValidationFailed
 from .fetcher import RepoContext, fetch_context
 from .generator import Cast, build_cast, build_prompt
@@ -43,6 +50,8 @@ class RunOptions:
     model: str = DEFAULT_MODEL
     api_key: str | None = None
     llm_timeout: int = DEFAULT_LLM_TIMEOUT
+    asset_pack: Path | str | None = None
+    public_assets: bool = False
 
 
 @dataclass
@@ -60,6 +69,7 @@ class RunArtifacts:
     clean: str
     report: Report | None
     output_dir: Path | None = None
+    asset_pack: AssetPack | None = None
 
 
 def _read_script(path: Path) -> str:
@@ -108,6 +118,17 @@ def run_pipeline(
 ) -> RunArtifacts:
     """按模式矩阵执行全部阶段，返回各阶段产物。"""
 
+    # --- 阶段 0：本地素材包先校验，避免无效输入触发慢速采集或付费 LLM ---
+    if options.public_assets and options.asset_pack is None:
+        raise UsageError("--public-assets 必须与 --asset-pack 一起使用")
+    asset_pack = (
+        load_asset_pack(options.asset_pack, public=options.public_assets)
+        if options.asset_pack is not None
+        else None
+    )
+    if asset_pack is not None:
+        log(f"素材包校验通过：{asset_pack.name}@{asset_pack.version}")
+
     # --- 阶段 1：抓取（在线采集或复用离线备份） ---
     ctx = (fetch_fn or _default_fetch)(options, log, progress)
 
@@ -116,14 +137,33 @@ def run_pipeline(
     log(f"角色表：{'、'.join(sorted(cast.names))}")
 
     # --- 阶段 3：prompt 组装与保存 ---
-    prompt = build_prompt(ctx, cast)
+    prompt = (
+        build_prompt(
+            ctx,
+            cast,
+            backgrounds=DEFAULT_BACKGROUNDS + asset_pack.logical_ids("background"),
+            figures=asset_pack.logical_ids("character"),
+            bgm=DEFAULT_BGM + asset_pack.logical_ids("bgm"),
+        )
+        if asset_pack is not None
+        else build_prompt(ctx, cast)
+    )
     if options.save_prompt:
         _save_prompt(options.save_prompt, prompt)
         log(f"prompt 已保存至 {options.save_prompt}（{len(prompt)} 字）")
 
     # --- 阶段 4：dry-run 不带脚本：到此为止（CLI 渲染 prompt） ---
     if options.dry_run and options.script is None:
-        return RunArtifacts(ctx, cast, prompt, "", "", None, None)
+        return RunArtifacts(
+            ctx=ctx,
+            cast=cast,
+            prompt=prompt,
+            raw="",
+            clean="",
+            report=None,
+            output_dir=None,
+            asset_pack=asset_pack,
+        )
 
     # --- 阶段 5：剧本来源（现成脚本或 LLM） ---
     if options.script is not None:
@@ -141,7 +181,17 @@ def run_pipeline(
         log(f"LLM 返回 {len(raw.splitlines())} 行")
 
     # --- 阶段 6：校验（不可绕过的硬边界） ---
-    clean, report = sanitize(raw, speakers=cast.names)
+    if asset_pack is not None:
+        asset_catalog = asset_pack.command_catalog()
+        asset_catalog["changeBg"] |= frozenset(DEFAULT_BACKGROUNDS)
+        asset_catalog["bgm"] |= frozenset(DEFAULT_BGM)
+    else:
+        asset_catalog = {
+            "changeBg": frozenset(DEFAULT_BACKGROUNDS),
+            "changeFigure": frozenset(),
+            "bgm": frozenset(DEFAULT_BGM),
+        }
+    clean, report = sanitize(raw, speakers=cast.names, assets=asset_catalog)
     log(report.summary())
     for finding in report.findings:
         if finding.kind in ("downgrade", "warn"):
@@ -151,7 +201,16 @@ def run_pipeline(
 
     # --- 阶段 7：dry-run 带脚本：只校验不打包（CLI 渲染报告） ---
     if options.dry_run:
-        return RunArtifacts(ctx, cast, prompt, raw, clean, report, None)
+        return RunArtifacts(
+            ctx=ctx,
+            cast=cast,
+            prompt=prompt,
+            raw=raw,
+            clean=clean,
+            report=report,
+            output_dir=None,
+            asset_pack=asset_pack,
+        )
 
     # --- 阶段 8：打包 ---
     output_dir = (package_fn or package)(
@@ -159,6 +218,16 @@ def run_pipeline(
         options.output_dir,
         game_name=f"{ctx.full_name} 编年史",
         game_key=f"repo2gal_{options.owner}_{options.repo}",
+        asset_pack=asset_pack,
         log=log,
     )
-    return RunArtifacts(ctx, cast, prompt, raw, clean, report, output_dir)
+    return RunArtifacts(
+        ctx=ctx,
+        cast=cast,
+        prompt=prompt,
+        raw=raw,
+        clean=clean,
+        report=report,
+        output_dir=output_dir,
+        asset_pack=asset_pack,
+    )

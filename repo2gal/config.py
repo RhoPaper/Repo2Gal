@@ -14,7 +14,7 @@ DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
 DEFAULT_MODEL = "deepseek-v4-pro"
 DEFAULT_LLM_TIMEOUT = 300
 
-# WebGAL 发行版自带的素材。数量少得可怜，这是当前产物观感的主要瓶颈。
+# WebGAL 发行版自带的兼容默认素材；使用 Asset Pack 时仍与包内资源并存。
 DEFAULT_BACKGROUNDS = ["bg.webp", "WebGalEnter.webp", "WebGAL_New_Enter_Image.webp"]
 DEFAULT_BGM = ["s_Title.mp3"]
 

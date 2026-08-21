@@ -25,6 +25,10 @@ class UsageError(Repo2GalError):
     exit_code = 2
 
 
+class AssetPackError(UsageError):
+    """本地 Asset Pack 的结构、授权或完整性校验失败。"""
+
+
 class FetchError(Repo2GalError):
     """GitHub 采集或备份不可用。"""
 

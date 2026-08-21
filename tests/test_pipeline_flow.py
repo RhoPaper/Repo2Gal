@@ -8,13 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from repo2gal.errors import UsageError, ValidationFailed
+from repo2gal.errors import AssetPackError, UsageError, ValidationFailed
 from repo2gal.fetcher import Contributor, RepoContext
 from repo2gal.generator import Cast
 from repo2gal.pipeline import RunOptions, run_pipeline
 
 SCRIPT = "say:这是现成剧本。\nend;\n"
 LLM_TEXT = "say:LLM 生成的剧本。\nend;\n"
+EXAMPLE_PACK = "builtin:cc0-chronicle"
 
 
 def make_ctx():
@@ -184,3 +185,71 @@ def test_cast_whitelist_applies_to_script(tmp_path):
     options = make_options(tmp_path, script=script, strict=True)
     with pytest.raises(ValidationFailed):
         run(tmp_path, options=options)
+
+
+# --- Asset Pack v1 ---
+
+def test_asset_pack_flows_from_prompt_through_validator_to_packager(tmp_path):
+    script = tmp_path / "story.txt"
+    script.write_text(
+        "changeBg:background.archive;\n"
+        "changeFigure:character.guide.normal;\n"
+        "bgm:bgm.archive;\n"
+        "changeBg:bg.webp;\n"
+        "bgm:s_Title.mp3;\n"
+        "end;\n",
+        encoding="utf-8",
+    )
+    options = make_options(
+        tmp_path,
+        script=script,
+        asset_pack=EXAMPLE_PACK,
+        public_assets=True,
+        strict=True,
+    )
+    captured = {}
+
+    def fake_package(clean, output_dir, **kwargs):
+        captured["clean"] = clean
+        captured["pack"] = kwargs["asset_pack"]
+        return output_dir
+
+    artifacts = run(tmp_path, options=options, package_fn=fake_package)
+
+    assert "background.archive" in artifacts.prompt
+    assert "character.guide.normal" in artifacts.prompt
+    assert "bgm.archive" in artifacts.prompt
+    assert "bg.webp" in artifacts.prompt and "s_Title.mp3" in artifacts.prompt
+    assert artifacts.report.downgrades == 0
+    assert captured["clean"] == artifacts.clean
+    assert captured["pack"].name == "@repo2gal/example-cc0-chronicle"
+    assert artifacts.asset_pack is captured["pack"]
+
+
+def test_invalid_asset_pack_fails_before_fetch(tmp_path):
+    called = []
+    options = make_options(tmp_path, asset_pack=tmp_path / "missing")
+
+    def should_not_fetch(*args):
+        called.append(1)
+        return make_ctx()
+
+    with pytest.raises(AssetPackError):
+        run_pipeline(options, fetch_fn=should_not_fetch)
+    assert not called
+
+
+def test_public_assets_requires_asset_pack_before_fetch(tmp_path):
+    called = []
+    options = make_options(tmp_path, public_assets=True)
+
+    with pytest.raises(UsageError, match="--asset-pack"):
+        run_pipeline(options, fetch_fn=lambda *args: called.append(1))
+    assert not called
+
+
+def test_default_assets_reject_change_figure_reference(tmp_path):
+    llm = FakeLLM(text="changeFigure:character.guide.normal;\nend;\n")
+    artifacts = run(tmp_path, llm=llm, package_fn=lambda clean, output, **kw: output)
+    assert artifacts.report.downgrades == 1
+    assert artifacts.clean.splitlines()[0].startswith(";[repo2gal]")

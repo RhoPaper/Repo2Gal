@@ -14,6 +14,7 @@ from pathlib import Path
 
 import click
 
+from .asset_pack import init_asset_pack, load_asset_pack
 from .config import (
     DEFAULT_LLM_TIMEOUT,
     default_backup_root,
@@ -45,7 +46,7 @@ def _die(msg: str, code: int) -> None:
     sys.exit(code)
 
 
-@click.command()
+@click.command(name="repo2gal")
 @click.argument("repo")
 @click.option("--output", "-o", default=None, type=click.Path(), help="产物目录，默认 ./output/<repo>")
 @click.option("--model", default=None, help="模型名，默认取 REPO2GAL_MODEL 或 deepseek-v4-pro")
@@ -63,8 +64,18 @@ def _die(msg: str, code: int) -> None:
 @click.option("--script", type=click.Path(path_type=Path), help="跳过 LLM，改用现成脚本文件")
 @click.option("--save-prompt", type=click.Path(), help="把 prompt 存盘，便于调试")
 @click.option("--strict", is_flag=True, help="validator 有降级即判失败")
+@click.option(
+    "--asset-pack",
+    type=click.Path(path_type=Path),
+    help="使用一个已通过校验的本地 Asset Pack v1 目录",
+)
+@click.option(
+    "--public-assets",
+    is_flag=True,
+    help="按公开发布标准校验素材许可证（拒绝 LicenseRef）",
+)
 @click.option("--timeout", default=DEFAULT_LLM_TIMEOUT, show_default=True, help="LLM 请求超时（秒）")
-def main(
+def generate(
     repo,
     output,
     model,
@@ -77,6 +88,8 @@ def main(
     script,
     save_prompt,
     strict,
+    asset_pack,
+    public_assets,
     timeout,
 ):
     """把 GitHub 仓库变成可游玩的 WebGAL 视觉小说。
@@ -109,6 +122,8 @@ def main(
         model=resolve_model(model),
         api_key=resolve_api_key(),
         llm_timeout=timeout,
+        asset_pack=Path(asset_pack) if asset_pack else None,
+        public_assets=public_assets,
     )
 
     try:
@@ -134,6 +149,64 @@ def main(
     click.echo(click.style("✓ 完成！", fg="green", bold=True))
     click.echo(f"  本地预览：python3 -m http.server -d {artifacts.output_dir} 8000")
     click.echo("  然后打开 http://localhost:8000")
+
+
+@click.group(name="assets")
+def assets_cli():
+    """初始化或校验本地 Repo2Gal Asset Pack v1。"""
+
+
+@assets_cli.command(name="init")
+@click.argument("path", type=click.Path(path_type=Path))
+def assets_init(path: Path) -> None:
+    """在 PATH 创建不覆盖现有文件的素材包骨架。"""
+    try:
+        root = init_asset_pack(path)
+    except Repo2GalError as exc:
+        _die(str(exc), exc.exit_code)
+    click.echo(click.style("✓ ", fg="green") + f"素材包骨架已创建：{root}")
+
+
+@assets_cli.command(name="validate")
+@click.argument("path", type=click.Path(path_type=Path))
+@click.option("--public", "public_assets", is_flag=True, help="按公开发布标准拒绝 LicenseRef")
+def assets_validate(path: Path, public_assets: bool) -> None:
+    """离线校验 PATH 的 Schema、授权、路径、MIME 与 SHA-256。"""
+    try:
+        pack = load_asset_pack(path, public=public_assets)
+    except Repo2GalError as exc:
+        _die(str(exc), exc.exit_code)
+    counts = [
+        f"{asset_type}×{len(pack.logical_ids(asset_type))}"
+        for asset_type in ("background", "character", "bgm")
+        if pack.logical_ids(asset_type)
+    ]
+    mode = "公开发布" if public_assets else "本地使用"
+    click.echo(
+        click.style("✓ ", fg="green")
+        + f"素材包校验通过：{pack.name}@{pack.version}（{mode}，{'，'.join(counts) or '无媒体'}）"
+    )
+
+
+class _CommandDispatcher:
+    """只为兼容 ``repo2gal owner/repo`` 而做的薄 argv 分派。"""
+
+    name = "repo2gal"
+
+    def main(self, args=None, prog_name=None, **extra):
+        argv = list(args) if args is not None else sys.argv[1:]
+        command = assets_cli if argv[:1] == ["assets"] else generate
+        command_args = argv[1:] if command is assets_cli else argv
+        display_name = prog_name or self.name
+        if command is assets_cli:
+            display_name += " assets"
+        return command.main(args=command_args, prog_name=display_name, **extra)
+
+    def __call__(self, *args, **kwargs):
+        return self.main(*args, **kwargs)
+
+
+main = _CommandDispatcher()
 
 
 if __name__ == "__main__":

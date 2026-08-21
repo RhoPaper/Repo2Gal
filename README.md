@@ -9,7 +9,7 @@
 真实历史——它为何诞生、经历过哪些争论、社区如何演变。剧情素材全部来自仓库的真实
 源码、README、Issue、PR、Discussion、wiki 与 Release。
 
-当前版本：v0.3.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。
+当前版本：v0.4.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。
 
 ## 演示
 
@@ -54,13 +54,14 @@ https://repo2gal.rhopaper.top/demo
 - [x] 原子打包：staging + 替换，失败保留旧产物
 - [x] 最小 flowchart 生成（当前单场景，仅入口节点）
 - [ ] 多场景流程图生成器
-- [ ] `THIRD_PARTY_NOTICES.md` 素材声明聚合
+- [x] `THIRD_PARTY_NOTICES.md` 引擎/素材声明、MPL-2.0 正文与原始授权材料保留
 - [ ] 部署配置（vercel.json）随产物生成
 
 ### 素材系统
 
-- [x] Asset Pack v1 规范草案（引擎无关、SPDX、provenance）
-- [ ] Local Provider（本地素材包）
+- [x] Asset Pack v1 Schema 与安全校验（SemVer、SPDX、BCP 47、MIME、SHA-256）
+- [x] Local Provider（`assets init/validate`、单包 WebGAL Adapter）
+- [x] 内置 CC0 Chronicle 示例包（与 WebGAL 默认素材并存）
 - [ ] Git Provider（开源素材包下载）
 - [ ] AI Provider（AI 生成素材）
 
@@ -68,14 +69,16 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] 统一错误体系与退出码契约、错误信息脱敏
 - [x] 显式管线（pipeline）与可注入依赖，全流程可离线端到端测试
-- [x] 离线测试套件（85 项）
+- [x] 离线测试套件（119 项）
 - [x] 文档体系：用户指南、开发规约、Agent 指南、部署文档
 - [ ] python-github-backup 真实 fixture 回归样本
 - [ ] 真实 LLM golden cases 评测集
 
 ## 安装
 
-要求 Python 3.10+ 与 git：
+要求 Python 3.10+、git 与 `libmagic`（Debian/Ubuntu 包名 `libmagic1`；仅 Asset Pack
+MIME 校验需要）。安全加载素材包还要求系统支持 `openat`/`O_NOFOLLOW`；不满足时只有
+Asset Pack 路径被拒绝，默认 WebGAL 素材流程仍可用：
 
 ```bash
 python3 -m venv .venv
@@ -91,6 +94,17 @@ export REPO2GAL_API_KEY=sk-xxx     # LLM API Key
 .venv/bin/repo2gal owner/repo
 python3 -m http.server -d output/<repo> 8000   # 打开 http://localhost:8000 游玩
 ```
+
+使用仓库内置的 CC0 Chronicle 素材包：
+
+```bash
+.venv/bin/repo2gal assets validate builtin:cc0-chronicle --public
+.venv/bin/repo2gal owner/repo \
+  --asset-pack builtin:cc0-chronicle --public-assets
+```
+
+不传 `--asset-pack` 时继续使用 WebGAL 发行版默认素材；传入素材包后，默认背景/BGM 仍会
+与包内逻辑 ID 一起出现在场景可用清单中。当前一次只接受一个本地包，不做多包覆盖或隐式下载。
 
 ### 使用其他模型
 
@@ -135,9 +149,11 @@ repo2gal vuejs/core --dry-run --script my_story.txt # 只校验剧本并打印�
 ## 工作原理
 
 ```
-python-github-backup ─┐
-                      ├─► RepoContext ──► LLM ──► validator ──► WebGAL 产物
-GitHub REST metadata ─┘    筛选叙事素材      写剧本    收敛降级       静态站点
+Asset Pack ──► Schema/授权/完整性校验 ───────────────────────┐
+python-github-backup ─┐                                     │
+                      ├─► RepoContext ──► LLM ──► validator ─┼─► WebGAL 产物
+GitHub REST metadata ─┘    筛选叙事素材      写剧本    收敛降级 │    静态站点
+逻辑素材 ID ──────────────────────────────────────────────────┘
 ```
 
 | 模块 | 职责 |
@@ -147,6 +163,8 @@ GitHub REST metadata ─┘    筛选叙事素材      写剧本    收敛降级
 | `llm.py` | LLM transport 薄客户端：错误包装与脱敏，与 prompt 组装分离 |
 | `validator.py` | 把脚本收敛到安全语法子集（不可绕过的硬边界） |
 | `packager.py` | WebGAL 发行版缓存、原子打包、最小 flowchart 生成 |
+| `asset_pack.py` | Asset Pack Schema、本地路径/授权/MIME/SHA/Profile 校验 |
+| `webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写与第三方声明聚合 |
 | `pipeline.py` | 流程编排唯一持有者：四模式矩阵与阶段产物传递 |
 | `config.py` | 默认值、环境解析与路径常量单一来源 |
 | `errors.py` | 统一错误类型 → 退出码契约与集中脱敏 |
@@ -182,16 +200,22 @@ return SCRIPT_CONFIG_MAP.get(command)?.scriptType ?? commandType.say;  // 默认
 - 剥离 Markdown 代码围栏与标题噪声；
 - 缺 `end;` 自动补齐。
 
-## 素材系统（规划）
+## 素材系统
 
-外部媒体资源将采用统一的、引擎无关的 Asset Pack，不直接捆绑进 GPL 程序代码。
-素材有三种 Provider：用户本地导入、GitHub 开源素材包下载、AI 生成，最终统一产出
-相同格式的 `repo2gal-pack.json`（SPDX 许可证、作者、版本、来源、哈希与生成记录）。
-规范见 [docs/dev/asset-pack-spec.md](docs/dev/asset-pack-spec.md)。
+v0.4.0 已实现 Asset Pack v1 Schema、Local Provider、安全校验、WebGAL Adapter 和
+`THIRD_PARTY_NOTICES.md`。剧本只引用 `background.archive` 等逻辑 ID，确定性 Adapter
+再映射到 WebGAL 裸文件名；LLM 不决定路径、许可证或复制行为。
+
+三种 Provider 最终使用同一个 `repo2gal-pack.json` 格式。当前只实现本地目录包；Git 下载
+和 AI 生成仍是后续计划。内置 CC0 示例随 wheel 分发，可用 `builtin:cc0-chronicle` 引用；
+源码位于 `repo2gal/examples/cc0-chronicle-pack/`。外部媒体保持自己的许可证，不捆进 GPL
+程序许可证。规范见
+[docs/dev/asset-pack-spec.md](docs/dev/asset-pack-spec.md)。
 
 ## 限制
 
-- 当前使用 WebGAL 内置素材（3 张背景、1 首 BGM），观感受限，Asset Pack 实现后改善；
+- 不传 `--asset-pack` 时只有 WebGAL 内置的 3 张背景和 1 首 BGM；
+- 当前只支持一个本地 Chronicle 包，不支持多包覆盖、Git 下载或 AI 生成；
 - 全量 Issue/PR/Discussion 备份首次可能较慢，后续运行使用上游增量备份。
 
 ## 文档
@@ -203,7 +227,9 @@ return SCRIPT_CONFIG_MAP.get(command)?.scriptType ?? commandType.say;  // 默认
 - [docs/dev/webgal-script-reference.md](docs/dev/webgal-script-reference.md) —
   WebGAL 语法速查表，对照解析器源码核实过，修改脚本生成前必读
 - [docs/dev/architecture.md](docs/dev/architecture.md) — 当前架构、依赖边界和数据流
-- [docs/dev/asset-pack-spec.md](docs/dev/asset-pack-spec.md) — Asset Pack v1 规范草案
+- [docs/dev/asset-pack-spec.md](docs/dev/asset-pack-spec.md) — Asset Pack v1 规范与实现范围
+- [docs/dev/asset-pack-dependencies.md](docs/dev/asset-pack-dependencies.md) —
+  Asset Pack 标准校验依赖调研与安全边界
 - [docs/dev/deployment.md](docs/dev/deployment.md) — 在线演示的部署与更新方式
 - [docs/dev/early/](docs/dev/early/) — 早期规划文档（v1–v9）及其勘误，仅历史参考
 

@@ -2,9 +2,9 @@
 
 > 本文描述**当前实现和已锁定的边界**。历史设想放在 `docs/dev/early/`，不得把早期规划当成现状。
 
-当前基线：`v0.3.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
-环境中端到端实测通过。v0.2.0 增加实时采集/下载进度和官方 GitHub REST 仓库概览；
-v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI），产品功能与 v0.2.0 一致。
+当前基线：`v0.4.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
+环境中端到端实测通过。v0.3.0 完成显式管线与统一错误域重构；v0.4.0 落地 Asset Pack v1
+Schema、Local Provider、WebGAL Adapter、第三方声明聚合和内置 CC0 示例包。
 
 ## 1. 产品定位
 
@@ -16,7 +16,14 @@ wiki 与 Release 中提炼项目历史，生成 WebGAL 静态站点。
 ## 2. 数据流
 
 ```text
-GitHub repository
+Local Asset Pack (optional)
+       │
+       ▼
+asset_pack.load_asset_pack()       Schema / SPDX / path / MIME / SHA / Profile
+       │
+       ├──────────────────────────────────────────────────────────┐
+       │                                                          │
+GitHub repository                                                 │
        │
        ├──► python-github-backup     认证 / 分页 / 限流 / 重试 / GraphQL / Git clone
        │               │
@@ -38,16 +45,16 @@ RepoContext
 generator.build_cast()               确定性选角（角色表白名单）
        │
        ▼
-generator.build_prompt()             确定性 prompt 组装
+generator.build_prompt()             确定性 prompt 组装（只暴露逻辑素材 ID）
        │
        ▼
 OpenAI-compatible LLM                唯一非确定性步骤：写剧本（llm.LLMClient）
        │
        ▼
-validator.sanitize()                 白名单校验、降级、修复死跳转（硬边界）
+validator.sanitize()                 命令/角色/逻辑素材 ID 校验与死跳转修复（硬边界）
        │
        ▼
-packager.package()                   WebGAL 官方发行版模板克隆与注入
+packager.package()                   WebGAL 模板 + 素材适配 + notices，staging 内完成
        │
        ▼
 output/<repo>/                       可由任意静态服务器托管
@@ -123,6 +130,15 @@ Repo2Gal **不负责**：
 - 默认配置：环境变量 `REPO2GAL_BASE_URL`、`REPO2GAL_MODEL`、`REPO2GAL_API_KEY`
 - LLM 只负责叙事创作，不负责 GitHub 抓取、角色白名单、流程校验和资源打包
 
+### 3.5 Asset Pack 标准校验依赖
+
+Asset Pack 基础标准不自行实现：Draft 2020-12 使用 `jsonschema`，SemVer 使用 `semver`，
+SPDX expression 使用 `packaging.licenses`，BCP 47 使用 `langcodes`，CSS Color 使用
+`coloraide`，magic MIME 使用 `python-magic` + 系统 `libmagic`。完整调研、维护状态、采用度、
+许可证和安全风险见 `docs/dev/asset-pack-dependencies.md`。
+
+`libmagic` 仅在实际加载素材包时延迟导入；未使用 `--asset-pack` 的原有流程不依赖系统库。
+
 ## 4. 模块职责
 
 | 文件 | 职责 | 不应承担 |
@@ -133,6 +149,8 @@ Repo2Gal **不负责**：
 | `validator.py` | WebGAL 安全子集、流程完整性、静默错误降级 | 改写剧情内容 |
 | `webgal.py` | 经源码核实的命令常量与转义 | 猜测引擎语法 |
 | `packager.py` | 获取发行版、原子替换、最小 flowchart、输出静态站点 | 修改 WebGAL 引擎 |
+| `asset_pack.py` | Schema、本地路径/授权/MIME/SHA/Profile 校验与本地包初始化 | 下载素材、执行包内脚本 |
+| `webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写、第三方声明聚合 | 转码、多包覆盖、许可证猜测 |
 | `pipeline.py` | 流程编排唯一持有者：四模式矩阵、阶段产物传递 | 参数解析、终端渲染 |
 | `config.py` | 默认值、环境解析、路径常量、密钥脱敏显示 | 业务逻辑 |
 | `errors.py` | 统一错误类型与退出码契约、错误正文脱敏 | 业务逻辑 |
@@ -145,6 +163,7 @@ Repo2Gal **不负责**：
 | 类型 | 退出码 | 场景 |
 |---|---|---|
 | `UsageError` | 2 | 参数/模式冲突、仓库标识或 `--script` 无法读取 |
+| `AssetPackError` | 2 | 本地素材包 Schema、授权、路径、MIME 或完整性错误 |
 | `FetchError` | 3 | 采集或备份不可用 |
 | `GenerationError` | 4 | LLM 网络/HTTP/格式错误（已脱敏） |
 | `ValidationFailed` | 5 | `--strict` 下 validator 存在降级 |
@@ -193,7 +212,7 @@ return SCRIPT_CONFIG_MAP.get(command)?.scriptType ?? commandType.say;
 所以 LLM 输出 `showCode:print(1);` 时，游戏会正常启动，但出现一个名叫 `showCode`
 的角色。validator 必须在打包前执行，并且不可通过“模型应该不会出错”绕过。
 
-## 8. 素材系统（已决策，未实现）
+## 8. 素材系统（Local Provider 已实现）
 
 素材来源插件化，但格式统一：
 
@@ -203,8 +222,31 @@ Git Provider ─────┼──> Repo2Gal Asset Pack ──> Validator ─
 AI Provider ──────┘
 ```
 
+v0.4.0 只实现 Local Provider，Git/AI Provider 仍是计划；核心没有 Provider 插件注册框架。
+一次只接受一个目录包，避免在没有真实需求时设计多包覆盖和依赖解析。
+
 素材包必须引擎无关。剧本引用逻辑 ID，例如 `background.archive`，WebGAL Adapter
-再映射为 `game/background/archive.webp`。
+确定性映射为 `game/background/background-archive.png` 等目标。当前 Chronicle MVP 支持
+`background`、`character`、`bgm` 三类素材；不指定包时继续使用 WebGAL 默认文件名，指定包时
+默认背景/BGM 也会合并进 prompt 与 validator catalog，并由 Adapter 原样放行。
+逻辑 ID 强制以素材类型和点号开头，不能与 WebGAL 默认裸文件名形成歧义或遮蔽。
+
+校验顺序为：1 MiB 有界读取/重复键 → Draft 2020-12 Schema 与标准格式 → 普通文件和路径
+边界 → 扩展名与 magic MIME → SHA-256 → Profile → 公开授权策略。媒体单文件上限 128 MiB，
+授权材料单文件上限 8 MiB、最多 512 个，全部声明文件总计上限 512 MiB。
+
+包内读取使用逐级 `openat` + `O_NOFOLLOW`，打包时在同一个源文件描述符上完成哈希与复制；
+目标使用 `O_EXCL` 创建，避免检查与复制之间重新跟随符号链接。缺少这些 OS 能力的平台会拒绝
+Asset Pack，但不影响 WebGAL 默认素材路径。AI provenance 的 `promptFile` 也按授权材料校验、
+哈希和保留；Git provenance 仅离线校验 URL/revision 结构，不声称验证远端内容。
+
+打包器保留 WebGAL 默认标题图、标题 BGM 和 Logo，外部包素材使用带完整逻辑 ID 的文件名，
+拒绝覆盖模板文件。所有产物根目录生成 `THIRD_PARTY_NOTICES.md`，并补入官方 web zip 未携带
+的 MPL-2.0 正文及对应版本源代码 URL；外部包的原始 manifest、LICENSE、NOTICE 和逐文件
+evidence 保存在 `third_party/asset-packs/`。
+
+内置 CC0 包属于 `repo2gal` package-data，随 wheel 分发，通过 `builtin:cc0-chronicle` 解析，
+不依赖当前工作目录。
 
 完整规范见 `docs/dev/asset-pack-spec.md`。
 
@@ -220,8 +262,8 @@ AI Provider ──────┘
 | Asset Pack | 各自许可证，必须 SPDX 标识并保留 NOTICE |
 | 用户生成剧本 | 由用户和所用模型条款决定 |
 
-程序采用 GPL-3.0 不意味着外部媒体自动变成 GPL。最终打包器未来必须聚合素材包声明并生成
-`THIRD_PARTY_NOTICES.md`。
+程序采用 GPL-3.0 不意味着外部媒体自动变成 GPL。v0.4.0 打包器会聚合素材包声明并生成
+`THIRD_PARTY_NOTICES.md`，同时保留原始许可证材料。
 
 ## 10. 当前状态与下一步
 
@@ -240,12 +282,15 @@ AI Provider ──────┘
 - 官方 GitHub REST 仓库概览及离线落盘
 - v0.3.0：显式管线（pipeline.py）、统一错误域（errors.py）、配置集中（config.py）、
   LLM 薄客户端（llm.py）、原子打包与最小 flowchart、`--dry-run` 模式矩阵语义修正
+- v0.4.0：Asset Pack v1 Schema、Local Provider、素材逻辑 ID validator、WebGAL Adapter、
+  `THIRD_PARTY_NOTICES.md` 和 CC0 Chronicle 示例包
 
-`v0.3.0` 结论：当前 Chronicle MVP 已可用，流程架构完成重构，不再处于“仅设计”或“待跑通”状态。
+`v0.4.0` 结论：Chronicle MVP 与单本地素材包闭环均已实现；Git/AI Provider 仍是计划，
+不得写成现有能力。
 
 推荐下一步：
 
-1. 进入下一里程碑：落地 Asset Pack v1 JSON Schema 与本地 Provider。
-2. 给备份解析器增加真实 `python-github-backup` fixture 回归样本。
-3. 用真实 LLM 评估 Chronicle prompt，建立固定仓库 golden cases。
-4. 再考虑多场景拆分、Git Asset Provider 和 AI Asset Provider。
+1. 给备份解析器增加真实 `python-github-backup` fixture 回归样本。
+2. 用真实 LLM 和 CC0 示例包评估 Chronicle prompt，建立固定仓库 golden cases。
+3. 再考虑多场景拆分和 Git Asset Provider；实现 Git Provider 前必须重新调研成熟 Git/归档依赖。
+4. AI Provider 继续后置，先明确服务条款快照、Prompt/seed 与 `LicenseRef-AI-*` 策略。

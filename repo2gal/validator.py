@@ -76,6 +76,7 @@ def sanitize(
     *,
     speakers: set[str] | None = None,
     allowed: frozenset[str] = SAFE_COMMANDS,
+    assets: dict[str, frozenset[str]] | None = None,
 ) -> tuple[str, Report]:
     """把 LLM 原始输出收敛成安全的 WebGAL 脚本。
 
@@ -84,6 +85,7 @@ def sanitize(
         speakers: 允许出现的角色名白名单（我们在 prompt 里声明过的那批）。
             ASCII 角色名必须在此列出，否则会被当成幻觉命令降级。
         allowed: 允许的命令白名单。
+        assets: 资源命令到允许引用的素材 ID/文件名；``None`` 表示不校验资源。
 
     Returns:
         (清洗后的脚本, 报告)
@@ -130,6 +132,19 @@ def sanitize(
 
         # --- 情形 2：白名单命令 ---
         if cmd in allowed:
+            if assets is not None and cmd in ("changeBg", "changeFigure", "bgm"):
+                reference = content.split(" -", 1)[0].strip()
+                if reference not in assets.get(cmd, frozenset()):
+                    safe = f";[repo2gal] 素材引用 '{reference}' 不可用，已注释：{body};"
+                    report.add(
+                        line_no,
+                        "downgrade",
+                        f"命令 '{cmd}' 引用了未声明或类型不匹配的素材 '{reference}'",
+                        original,
+                        safe,
+                    )
+                    out.append(safe)
+                    continue
             if cmd == "label":
                 labels.add(content.strip())
             elif cmd == "jumpLabel":

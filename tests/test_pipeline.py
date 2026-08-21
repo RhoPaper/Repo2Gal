@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import repo2gal.fetcher as fetcher  # noqa: E402
 import repo2gal.packager as packager_module  # noqa: E402
+import repo2gal.webgal_assets as webgal_assets_module  # noqa: E402
 from repo2gal.errors import PackageError  # noqa: E402
 from repo2gal.fetcher import (  # noqa: E402
     Contributor,
@@ -401,6 +402,20 @@ def test_package_injects_script(tmp_path):
     # 官方 demo 场景不能混进产物
     assert not (out / "game" / "scene" / "demo_zh_cn.txt").exists()
     assert not (out / "game" / "scene" / "function_test.txt").exists()
+    assert "MPL-2.0" in (out / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+    assert (out / "third_party" / "WebGAL" / "LICENSE").exists()
+
+
+def test_default_package_notices_do_not_require_openat(tmp_path, monkeypatch):
+    template = tmp_path / "tpl"
+    (template / "game" / "scene").mkdir(parents=True)
+    (template / "index.html").write_text("<html></html>", encoding="utf-8")
+    monkeypatch.setattr(webgal_assets_module.os, "supports_dir_fd", set())
+
+    out = package("end;\n", tmp_path / "out", game_name="Test", game_key="k", template=template)
+
+    assert (out / "THIRD_PARTY_NOTICES.md").exists()
+    assert (out / "third_party" / "WebGAL" / "LICENSE").exists()
 
 
 def test_package_overwrites_existing(tmp_path):
@@ -541,4 +556,3 @@ def test_ensure_template_hash_mismatch_wraps_package_error(tmp_path, monkeypatch
     with pytest.raises(packager_module.PackageError) as exc:
         ensure_template()
     assert "SHA-256" in str(exc.value)
-
