@@ -170,6 +170,10 @@ def run_backup(
     if organization:
         command.append("--organization")
     command.append("--private")
+    if token.startswith("ghs_"):
+        # GitHub Actions GITHUB_TOKEN is an installation token. Upstream supports it
+        # through its public GitHub App mode; classic Basic auth returns 401 for /user.
+        command.append("--as-app")
     if incremental and repo_dir.exists():
         command.append("--incremental")
 

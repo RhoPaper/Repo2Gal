@@ -7,7 +7,7 @@
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest tests/ -q      # 165 项离线测试，数秒内完成
+.venv/bin/python -m pytest tests/ -q      # 166 项离线测试，数秒内完成
 ```
 
 CLI 冒烟（不联网、不花钱）：

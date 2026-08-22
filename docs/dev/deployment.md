@@ -44,7 +44,8 @@ PR 不会获得生产 secrets，也不会部署。Deploy job 使用 GitHub `prod
 | `VERCEL_TOKEN` | 链接并部署 `rhopapers-projects/repo2gal-demo` |
 
 GitHub 数据访问使用 Actions 自动提供的 `github.token`，不要另建长期 GitHub PAT。Workflow
-只授予 `contents/issues/pull-requests/discussions: read`。
+只授予 `contents/issues/pull-requests/discussions: read`。该 `ghs_` installation token 会通过
+`python-github-backup` 的公开 `--as-app` 模式使用，不需要第三个 secret。
 
 ### 可选 Variables
 

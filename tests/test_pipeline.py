@@ -283,6 +283,29 @@ def test_run_backup_delegates_all_github_work_to_upstream(tmp_path, monkeypatch)
     assert "ghp_test" not in " ".join(command)
 
 
+def test_run_backup_uses_upstream_app_mode_for_actions_token(tmp_path, monkeypatch):
+    expected = tmp_path / "repositories" / "widget"
+    expected.mkdir(parents=True)
+    captured = {}
+    monkeypatch.setattr(fetcher.shutil, "which", lambda _name: "/usr/bin/github-backup")
+
+    class FakeProcess:
+        stdout = io.StringIO("")
+
+        def wait(self):
+            return 0
+
+    def fake_popen(command, **kwargs):
+        captured["command"] = command
+        return FakeProcess()
+
+    monkeypatch.setattr(fetcher.subprocess, "Popen", fake_popen)
+    assert run_backup("acme", "widget", tmp_path, token="ghs_actions_token") == expected
+    assert "--as-app" in captured["command"]
+    assert "--token" in captured["command"]
+    assert "ghs_actions_token" not in " ".join(captured["command"])
+
+
 def test_repository_metadata_uses_only_official_rest_api(monkeypatch):
     captured = {}
 
