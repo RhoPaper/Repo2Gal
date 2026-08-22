@@ -150,7 +150,12 @@ def test_strict_raises_validation_failed_on_downgrade(tmp_path):
 def test_strict_allows_clean_script(tmp_path):
     llm = FakeLLM(text=LLM_TEXT)
     options = make_options(tmp_path, strict=True)
-    artifacts = run(tmp_path, options=options, llm=llm)
+    artifacts = run(
+        tmp_path,
+        options=options,
+        llm=llm,
+        package_fn=lambda clean, output_dir, **kwargs: output_dir,
+    )
     assert artifacts.output_dir is not None
 
 

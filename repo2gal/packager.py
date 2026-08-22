@@ -40,6 +40,10 @@ WEBGAL_SHA256 = "299a18b8e0e4a9bc48e659fe50a3a640c71743ed11647acb81a9384149ff935
 def ensure_template(*, log=lambda _m: None) -> Path:
     """下载并缓存 WebGAL 发行版模板，返回模板根目录。"""
     dest = cache_dir() / f"webgal-{WEBGAL_VERSION}"
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise PackageError(f"无法创建 WebGAL 缓存目录：{exc}") from exc
     marker = dest / "index.html"
     if marker.exists():
         log(f"复用已缓存模板 {marker.parent}")

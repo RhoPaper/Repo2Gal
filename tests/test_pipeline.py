@@ -371,7 +371,8 @@ def test_webgal_download_reports_progress_and_checks_hash(tmp_path, monkeypatch)
             yield payload[:midpoint]
             yield payload[midpoint:]
 
-    monkeypatch.setattr(packager_module, "cache_dir", lambda: tmp_path)
+    cache_root = tmp_path / "nested" / "cache"
+    monkeypatch.setattr(packager_module, "cache_dir", lambda: cache_root)
     monkeypatch.setattr(packager_module.requests, "get", lambda *args, **kwargs: Response())
     monkeypatch.setattr(packager_module, "WEBGAL_SHA256", hashlib.sha256(payload).hexdigest())
     logs = []
@@ -379,6 +380,7 @@ def test_webgal_download_reports_progress_and_checks_hash(tmp_path, monkeypatch)
     template = ensure_template(log=logs.append)
 
     assert (template / "index.html").exists()
+    assert template.parent == cache_root
     assert any("下载进度" in line for line in logs)
     assert any("100%" in line for line in logs)
 
