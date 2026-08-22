@@ -18,6 +18,67 @@ Vercel 项目 repo2gal-demo ── 域名 repo2gal.rhopaper.top（已验证）
 Cloudflare DNS：repo2gal.rhopaper.top CNAME cname-china.vercel-dns.com（仅 DNS）
 ```
 
+## 自动部署
+
+仓库通过两条 GitHub Actions workflow 持续部署：
+
+| Workflow | 触发条件 | 职责 |
+|---|---|---|
+| `.github/workflows/ci.yml` | 所有 push 和 PR | 离线测试、内置 Asset Pack 校验、release wheel 构建 |
+| `.github/workflows/deploy-demo.yml` | `main` 的 CI 成功后；或在 `main` 手动触发 | 真实数据/LLM 生成、严格校验、审计上传、Vercel production 部署和线上校验 |
+
+标准路径是每次 push 到 `main` 部署一次最终 commit。一次 push 包含多个 commit 时不会逐个
+重复调用 LLM；快速连续 push 会由 concurrency 取消旧部署，只保留最新 commit。
+
+PR 不会获得生产 secrets，也不会部署。Deploy job 使用 GitHub `production` environment，
+可以在仓库 Settings 中为该 environment 增加 required reviewers。
+
+### 必需 Secrets
+
+在 GitHub 仓库 `Settings -> Secrets and variables -> Actions` 中配置 repository secret，
+或在 `production` environment 中配置同名 environment secret：
+
+| Secret | 用途 |
+|---|---|
+| `REPO2GAL_API_KEY` | LLM 1 剧情生成和 LLM 2 Performance Plan |
+| `VERCEL_TOKEN` | 链接并部署 `rhopapers-projects/repo2gal-demo` |
+
+GitHub 数据访问使用 Actions 自动提供的 `github.token`，不要另建长期 GitHub PAT。Workflow
+只授予 `contents/issues/pull-requests/discussions: read`。
+
+### 可选 Variables
+
+非默认模型时配置 repository/environment variables：
+
+| Variable | 默认值 |
+|---|---|
+| `REPO2GAL_BASE_URL` | `https://api.deepseek.com/v1` |
+| `REPO2GAL_MODEL` | `deepseek-v4-pro` |
+
+`VERCEL_SCOPE=rhopapers-projects` 和 `VERCEL_PROJECT=repo2gal-demo` 是公开项目标识，已固定在
+workflow 中，不属于 secret。
+
+### 自动生成策略
+
+生产生成使用：
+
+```bash
+repo2gal RhoPaper/Repo2Gal \
+  --asset-pack builtin:cc0-chronicle --public-assets \
+  --performance --strict --strict-performance \
+  --save-beat-manifest .repo2gal/audit/beat-manifest.json \
+  --save-performance-plan .repo2gal/audit/performance-plan.json \
+  --save-performance-report .repo2gal/audit/performance-report.json \
+  --output output/Repo2Gal
+```
+
+Workflow 缓存固定 WebGAL 模板和 `python-github-backup` 原始层，但不传 `--reuse-backup`：
+每次部署仍会让上游增量更新 GitHub 数据。生成或严格校验失败时不会执行 Vercel 部署，已有
+生产版本保持不变。
+
+每次成功生成会保留 30 天 GitHub Artifact：Beat Manifest、Performance Plan、Performance
+Report、最终 `start.txt` 和第三方声明。
+
 `/demo` 路径由 Vercel 路由配置实现：游戏静态文件部署在站点根目录，
 `vercel.json` 把 `/demo` 重写到根文件，因此**产物内部无需改动**。
 
@@ -40,7 +101,8 @@ Cloudflare DNS：repo2gal.rhopaper.top CNAME cname-china.vercel-dns.com（仅 DN
 
 ## 二、写入 vercel.json
 
-打包器暂不生成部署配置（后续待办），部署前在产物根目录放置：
+打包器暂不生成部署配置。自动部署从已跟踪的 `deploy/vercel.json` 复制；手动部署前在产物
+根目录放置同样内容：
 
 ```json
 {
@@ -61,9 +123,10 @@ Cloudflare DNS：repo2gal.rhopaper.top CNAME cname-china.vercel-dns.com（仅 DN
 
 ```bash
 cd output/Repo2Gal
-npx -y vercel@latest projects add repo2gal-demo --token "$VERCEL_TOKEN"   # 首次
-npx -y vercel@latest link --yes --project repo2gal-demo --token "$VERCEL_TOKEN"
-npx -y vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+pnpm dlx vercel@59.3.0 link --yes \
+  --project repo2gal-demo --scope rhopapers-projects --token "$VERCEL_TOKEN"
+pnpm dlx vercel@59.3.0 deploy --prod --yes \
+  --scope rhopapers-projects --token "$VERCEL_TOKEN"
 ```
 
 - 部署输出别名为 `https://repo2gal-demo.vercel.app`；
@@ -98,7 +161,7 @@ curl -sI https://repo2gal.rhopaper.top/demo/game/scene/start.txt   # 期望 200
 
 ## 注意事项
 
-- `vercel.json` 位于 gitignored 的 `output/` 内，重新生成会丢失；更新 demo 时
-  按第二步重新放置。未来把部署配置生成纳入 `packager.py` 是待办项；
+- `output/Repo2Gal/vercel.json` 是复制品，重新生成会丢失；权威文件是已跟踪的
+  `deploy/vercel.json`。未来可再把复制逻辑纳入 `packager.py`；
 - 产物约 93 MB（含 WebGAL 引擎与官方演示 vocal），在 Vercel 静态部署限额内；
 - `VERCEL_TOKEN` 属敏感凭据，不要写入任何仓库文件或日志。

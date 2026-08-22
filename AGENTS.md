@@ -22,6 +22,10 @@ Performance Plan v1 动态演出闭环。
 在线演示（dogfooding 产物）：https://repo2gal.rhopaper.top/demo ，
 部署与更新方式见 `docs/dev/deployment.md`。
 
+GitHub Actions 的 `CI` 对 push/PR 运行离线测试；`Deploy Demo` 只在 `main` 的 CI 成功后
+使用仓库 secrets 生成并部署生产演示。PR 不得接触 LLM/Vercel secrets，自动部署规则以
+`docs/dev/deployment.md` 为准。
+
 开始工作前必读：
 
 1. `README.md`

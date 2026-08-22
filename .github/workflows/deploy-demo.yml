@@ -1,0 +1,167 @@
+name: Deploy Demo
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  discussions: read
+
+concurrency:
+  group: repo2gal-demo-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: production
+      url: https://repo2gal.rhopaper.top/demo
+    env:
+      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      VERCEL_SCOPE: rhopapers-projects
+      VERCEL_PROJECT: repo2gal-demo
+
+    steps:
+      - name: Checkout successful commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - name: Require deployment secrets
+        env:
+          REPO2GAL_API_KEY: ${{ secrets.REPO2GAL_API_KEY }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          test -n "$REPO2GAL_API_KEY" || {
+            echo "Missing GitHub secret: REPO2GAL_API_KEY" >&2
+            exit 1
+          }
+          test -n "$VERCEL_TOKEN" || {
+            echo "Missing GitHub secret: VERCEL_TOKEN" >&2
+            exit 1
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install --yes libmagic1
+
+      - name: Install Repo2Gal
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install -e ".[dev]"
+
+      - name: Restore WebGAL template cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/repo2gal
+          key: ${{ runner.os }}-repo2gal-webgal-4.6.2
+
+      - name: Restore incremental GitHub backup
+        uses: actions/cache@v4
+        with:
+          path: .repo2gal/backups/RhoPaper
+          key: ${{ runner.os }}-repo2gal-backup-${{ env.DEPLOY_SHA }}
+          restore-keys: |
+            ${{ runner.os }}-repo2gal-backup-
+
+      - name: Generate strict dogfooding demo
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO2GAL_API_KEY: ${{ secrets.REPO2GAL_API_KEY }}
+          REPO2GAL_BASE_URL: ${{ vars.REPO2GAL_BASE_URL }}
+          REPO2GAL_MODEL: ${{ vars.REPO2GAL_MODEL }}
+        run: |
+          .venv/bin/repo2gal RhoPaper/Repo2Gal \
+            --asset-pack builtin:cc0-chronicle \
+            --public-assets \
+            --performance \
+            --strict \
+            --strict-performance \
+            --save-beat-manifest .repo2gal/audit/beat-manifest.json \
+            --save-performance-plan .repo2gal/audit/performance-plan.json \
+            --save-performance-report .repo2gal/audit/performance-report.json \
+            --output output/Repo2Gal
+
+      - name: Verify generated demo
+        run: |
+          test -s output/Repo2Gal/index.html
+          test -s output/Repo2Gal/game/scene/start.txt
+          test -s .repo2gal/audit/performance-report.json
+          grep -q "repo2gal performance" output/Repo2Gal/game/scene/start.txt
+          grep -q -- "-enter=shockwaveIn" output/Repo2Gal/game/scene/start.txt
+          grep -q '"degraded": false' .repo2gal/audit/performance-report.json
+
+      - name: Add Vercel routes
+        run: cp deploy/vercel.json output/Repo2Gal/vercel.json
+
+      - name: Upload generation audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo2gal-demo-${{ env.DEPLOY_SHA }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            .repo2gal/audit/*.json
+            output/Repo2Gal/game/scene/start.txt
+            output/Repo2Gal/THIRD_PARTY_NOTICES.md
+
+      - name: Link Vercel project
+        working-directory: output/Repo2Gal
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: >-
+          pnpm dlx vercel@59.3.0 link --yes
+          --project "$VERCEL_PROJECT"
+          --scope "$VERCEL_SCOPE"
+          --token "$VERCEL_TOKEN"
+
+      - name: Deploy production demo
+        working-directory: output/Repo2Gal
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: >-
+          pnpm dlx vercel@59.3.0 deploy --prod --yes
+          --scope "$VERCEL_SCOPE"
+          --token "$VERCEL_TOKEN"
+          --meta githubCommitSha="$DEPLOY_SHA"
+          --meta githubActionsRunId="$GITHUB_RUN_ID"
+
+      - name: Verify production demo
+        run: |
+          curl --fail --silent --show-error --retry 10 --retry-all-errors \
+            --retry-delay 3 https://repo2gal.rhopaper.top/demo \
+            --output /tmp/demo-index.html
+          curl --fail --silent --show-error --retry 10 --retry-all-errors \
+            --retry-delay 3 https://repo2gal.rhopaper.top/demo/game/scene/start.txt \
+            --output /tmp/demo-start.txt
+          cmp output/Repo2Gal/game/scene/start.txt /tmp/demo-start.txt
+          curl --fail --silent --show-error --head \
+            https://repo2gal.rhopaper.top/ | grep -qi '^location: /demo'
