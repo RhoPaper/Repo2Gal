@@ -22,11 +22,27 @@ from .config import (
     DEFAULT_LLM_TIMEOUT,
     DEFAULT_MODEL,
 )
-from .errors import UsageError, ValidationFailed
+from .errors import GenerationError, UsageError, ValidationFailed
 from .fetcher import RepoContext, fetch_context
 from .generator import Cast, build_cast, build_prompt
 from .llm import LLMClient
 from .packager import package
+from .performance import (
+    DEFAULT_PROFILE,
+    PROFILES,
+    PerformanceReport,
+    build_performance_prompt,
+    build_baseline_plan,
+    compile_plan,
+    compiled_command_count,
+    extract_beats,
+    load_plan,
+    merge_insertions,
+    merge_unanchored_baseline,
+    normalize_figure_ids,
+    save_json,
+    validate_plan,
+)
 from .validator import Report, sanitize
 
 
@@ -52,6 +68,12 @@ class RunOptions:
     llm_timeout: int = DEFAULT_LLM_TIMEOUT
     asset_pack: Path | str | None = None
     public_assets: bool = False
+    performance: bool = False
+    performance_profile: str = DEFAULT_PROFILE
+    strict_performance: bool = False
+    save_beat_manifest: Path | None = None
+    save_performance_plan: Path | None = None
+    save_performance_report: Path | None = None
 
 
 @dataclass
@@ -70,6 +92,9 @@ class RunArtifacts:
     report: Report | None
     output_dir: Path | None = None
     asset_pack: AssetPack | None = None
+    beat_manifest: dict | None = None
+    performance_plan: dict | None = None
+    performance_report: PerformanceReport | None = None
 
 
 def _read_script(path: Path) -> str:
@@ -90,6 +115,23 @@ def _save_prompt(path: Path, prompt: str) -> None:
         path.write_text(prompt, encoding="utf-8")
     except OSError as exc:
         raise UsageError(f"无法写入 prompt：{path}（{exc}）") from exc
+
+
+def _save_json(path: Path, value: object) -> None:
+    try:
+        save_json(path, value)
+    except OSError as exc:
+        raise UsageError(f"无法写入审计 JSON：{path}（{exc}）") from exc
+
+
+def _merge_fallback(
+    script: str,
+    insertions,
+    manifest,
+) -> tuple[str, int]:
+    if insertions:
+        return merge_insertions(script, insertions, manifest), compiled_command_count(insertions)
+    return merge_unanchored_baseline(script), 2
 
 
 def _default_fetch(options: RunOptions, log: Callable, progress: Callable) -> RepoContext:
@@ -117,6 +159,18 @@ def run_pipeline(
     progress=lambda _m: None,
 ) -> RunArtifacts:
     """按模式矩阵执行全部阶段，返回各阶段产物。"""
+
+    audit_paths = (
+        options.save_beat_manifest,
+        options.save_performance_plan,
+        options.save_performance_report,
+    )
+    if any(audit_paths) and not options.performance:
+        raise UsageError("性能审计 JSON 参数必须与 --performance 一起使用")
+    if options.strict_performance and not options.performance:
+        raise UsageError("--strict-performance 必须与 --performance 一起使用")
+    if options.performance_profile not in PROFILES:
+        raise UsageError(f"未知动态演出 profile：{options.performance_profile}")
 
     # --- 阶段 0：本地素材包先校验，避免无效输入触发慢速采集或付费 LLM ---
     if options.public_assets and options.asset_pack is None:
@@ -199,22 +253,182 @@ def run_pipeline(
     if options.strict and report.downgrades:
         raise ValidationFailed(f"strict 模式：存在 {report.downgrades} 处降级")
 
-    # --- 阶段 7：dry-run 带脚本：只校验不打包（CLI 渲染报告） ---
+    # --- 阶段 7：可选动态演出（失败默认不影响已校验剧情） ---
+    performance_script = clean
+    beat_manifest = None
+    performance_plan = None
+    performance_report = None
+    if options.performance:
+        performance_script = normalize_figure_ids(clean, asset_pack)
+        manifest = extract_beats(
+            performance_script,
+            speakers=cast.names,
+            asset_pack=asset_pack,
+        )
+        beat_manifest = manifest.to_dict()
+        if options.save_beat_manifest:
+            _save_json(options.save_beat_manifest, beat_manifest)
+
+        performance_report = PerformanceReport(story_hash=manifest.story_hash)
+        performance_prompt = build_performance_prompt(
+            manifest,
+            profile=options.performance_profile,
+        )
+        log("调用 LLM 生成动态演出计划")
+        try:
+            performance_raw = (llm_client or LLMClient(
+                base_url=options.base_url,
+                model=options.model,
+                api_key=options.api_key,
+                timeout=options.llm_timeout,
+            )).complete(performance_prompt, temperature=0.2)
+            performance_plan = load_plan(
+                performance_raw,
+                report=performance_report,
+                story_hash=manifest.story_hash,
+                scene_id=manifest.scene_id,
+                profile=options.performance_profile,
+            )
+        except GenerationError as exc:
+            performance_report.add("error", f"动态演出 LLM 调用失败，已回退剧情：{exc}")
+            performance_raw = ""
+            performance_plan = None
+        if options.save_performance_plan:
+            _save_json(
+                options.save_performance_plan,
+                performance_plan if performance_plan is not None else {"raw": performance_raw},
+            )
+        if performance_plan is not None:
+            parse_findings = list(performance_report.findings)
+            parse_degraded = performance_report.degraded
+            performance_report = validate_plan(
+                performance_plan,
+                manifest=manifest,
+                asset_pack=asset_pack,
+                profile=options.performance_profile,
+            )
+            performance_report.findings = parse_findings + performance_report.findings
+            performance_report.degraded = parse_degraded or performance_report.degraded
+            if performance_report.semantic_valid:
+                insertions = compile_plan(
+                    performance_plan,
+                    manifest=manifest,
+                    asset_pack=asset_pack,
+                )
+                performance_report.compiled_command_count = compiled_command_count(insertions)
+                performance_script = merge_insertions(
+                    performance_script,
+                    insertions,
+                    manifest,
+                )
+                if not insertions:
+                    performance_report.degraded = True
+                    fallback_plan = build_baseline_plan(
+                        manifest,
+                        profile=options.performance_profile,
+                    )
+                    fallback_report = validate_plan(
+                        fallback_plan,
+                        manifest=manifest,
+                        asset_pack=asset_pack,
+                        profile=options.performance_profile,
+                    )
+                    if fallback_report.semantic_valid:
+                        performance_report.add(
+                            "warn",
+                            "LLM 返回空演出计划，已使用最低确定性演出 fallback",
+                        )
+                        fallback_insertions = compile_plan(
+                            fallback_plan,
+                            manifest=manifest,
+                            asset_pack=asset_pack,
+                        )
+                        performance_script, performance_report.compiled_command_count = _merge_fallback(
+                            performance_script,
+                            fallback_insertions,
+                            manifest,
+                        )
+            else:
+                performance_report.degraded = True
+                fallback_plan = build_baseline_plan(
+                    manifest,
+                    profile=options.performance_profile,
+                )
+                fallback_report = validate_plan(
+                    fallback_plan,
+                    manifest=manifest,
+                    asset_pack=asset_pack,
+                    profile=options.performance_profile,
+                )
+                if fallback_report.semantic_valid:
+                    performance_report.add(
+                        "warn",
+                        "LLM 演出计划无效，已保留剧情并使用最低确定性演出 fallback",
+                    )
+                    fallback_insertions = compile_plan(
+                        fallback_plan,
+                        manifest=manifest,
+                        asset_pack=asset_pack,
+                    )
+                    performance_script, performance_report.compiled_command_count = _merge_fallback(
+                        performance_script,
+                        fallback_insertions,
+                        manifest,
+                    )
+        else:
+            performance_report.degraded = True
+            fallback_plan = build_baseline_plan(
+                manifest,
+                profile=options.performance_profile,
+            )
+            fallback_report = validate_plan(
+                fallback_plan,
+                manifest=manifest,
+                asset_pack=asset_pack,
+                profile=options.performance_profile,
+            )
+            if fallback_report.semantic_valid:
+                performance_report.add(
+                    "warn",
+                    "LLM 未返回可用演出计划，已保留剧情并使用最低确定性演出 fallback",
+                )
+                fallback_insertions = compile_plan(
+                    fallback_plan,
+                    manifest=manifest,
+                    asset_pack=asset_pack,
+                )
+                performance_script, performance_report.compiled_command_count = _merge_fallback(
+                    performance_script,
+                    fallback_insertions,
+                    manifest,
+                )
+        if performance_report is None:
+            performance_report = PerformanceReport(story_hash=manifest.story_hash)
+        log(performance_report.summary())
+        if options.save_performance_report:
+            _save_json(options.save_performance_report, performance_report.to_dict())
+        if options.strict_performance and performance_report.degraded:
+            raise ValidationFailed("strict-performance：动态演出计划校验失败")
+
+    # --- 阶段 8：dry-run 带脚本：只校验不打包（CLI 渲染报告） ---
     if options.dry_run:
         return RunArtifacts(
             ctx=ctx,
             cast=cast,
             prompt=prompt,
             raw=raw,
-            clean=clean,
+            clean=performance_script,
             report=report,
             output_dir=None,
             asset_pack=asset_pack,
+            beat_manifest=beat_manifest,
+            performance_plan=performance_plan,
+            performance_report=performance_report,
         )
 
-    # --- 阶段 8：打包 ---
+    # --- 阶段 9：打包 ---
     output_dir = (package_fn or package)(
-        clean,
+        performance_script,
         options.output_dir,
         game_name=f"{ctx.full_name} 编年史",
         game_key=f"repo2gal_{options.owner}_{options.repo}",
@@ -226,8 +440,11 @@ def run_pipeline(
         cast=cast,
         prompt=prompt,
         raw=raw,
-        clean=clean,
+        clean=performance_script,
         report=report,
         output_dir=output_dir,
         asset_pack=asset_pack,
+        beat_manifest=beat_manifest,
+        performance_plan=performance_plan,
+        performance_report=performance_report,
     )

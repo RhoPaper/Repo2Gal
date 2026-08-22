@@ -1,6 +1,6 @@
 [project]
 name = "repo2gal"
-version = "0.4.0"
+version = "0.5.0"
 description = "把 GitHub 仓库变成可游玩的 WebGAL 视觉小说"
 requires-python = ">=3.10"
 dependencies = [
@@ -13,6 +13,7 @@ dependencies = [
     "langcodes>=3.5.1,<4",
     "python-magic>=0.4.27,<0.5",
     "coloraide>=8.11.1,<9",
+    "Pillow>=12.3,<13",
 ]
 
 [project.optional-dependencies]

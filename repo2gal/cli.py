@@ -27,6 +27,7 @@ from .config import (
 from .errors import Repo2GalError
 from .fetcher import parse_repo
 from .pipeline import RunOptions, run_pipeline
+from .performance import DEFAULT_PROFILE, PROFILES
 
 
 def _log(msg: str) -> None:
@@ -64,6 +65,18 @@ def _die(msg: str, code: int) -> None:
 @click.option("--script", type=click.Path(path_type=Path), help="跳过 LLM，改用现成脚本文件")
 @click.option("--save-prompt", type=click.Path(), help="把 prompt 存盘，便于调试")
 @click.option("--strict", is_flag=True, help="validator 有降级即判失败")
+@click.option("--performance", is_flag=True, help="启用第二次 LLM 动态演出规划与确定性编译")
+@click.option(
+    "--performance-profile",
+    type=click.Choice(sorted(PROFILES)),
+    default=DEFAULT_PROFILE,
+    show_default=True,
+    help="动态演出风格与预算",
+)
+@click.option("--strict-performance", is_flag=True, help="动态演出计划失败即以退出码 5 拒绝产物")
+@click.option("--save-beat-manifest", type=click.Path(path_type=Path), help="保存 Beat Manifest 调试 JSON")
+@click.option("--save-performance-plan", type=click.Path(path_type=Path), help="保存 Performance Plan 调试 JSON")
+@click.option("--save-performance-report", type=click.Path(path_type=Path), help="保存演出校验报告 JSON")
 @click.option(
     "--asset-pack",
     type=click.Path(path_type=Path),
@@ -88,6 +101,12 @@ def generate(
     script,
     save_prompt,
     strict,
+    performance,
+    performance_profile,
+    strict_performance,
+    save_beat_manifest,
+    save_performance_plan,
+    save_performance_report,
     asset_pack,
     public_assets,
     timeout,
@@ -124,6 +143,12 @@ def generate(
         llm_timeout=timeout,
         asset_pack=Path(asset_pack) if asset_pack else None,
         public_assets=public_assets,
+        performance=performance,
+        performance_profile=performance_profile,
+        strict_performance=strict_performance,
+        save_beat_manifest=save_beat_manifest,
+        save_performance_plan=save_performance_plan,
+        save_performance_report=save_performance_report,
     )
 
     try:

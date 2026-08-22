@@ -51,6 +51,36 @@ python3 -m http.server -d output/<repo> 8000   # 本地预览
 
 全部命令行选项、模式矩阵与退出码见 [`README.md`](../README.md#快速开始)。
 
+### 动态演出
+
+动态演出默认关闭，需要显式指定 `--performance`：
+
+```bash
+.venv/bin/repo2gal owner/repo \
+  --performance \
+  --performance-profile chronicle-subtle
+```
+
+当前实现支持立绘进入/退出、语义槽位移动、摇晃、注册的预设动画、背景转场和场景生命周期
+Pixi 效果。第二次模型不会生成 WebGAL 命令、坐标、文件名或 runtime ID，所有这些内容由
+Python 确定性编译。
+
+内置角色素材虽然保留全身原图，但 manifest 带有归一化 `framing` 标注。最终 WebGAL 产物会
+默认居中放大为半身构图，腿部藏在画面下方；移动和动画不会重置成全身视图。
+
+调试审计文件按需选择保存：
+
+```bash
+.venv/bin/repo2gal owner/repo --performance \
+  --save-beat-manifest debug/beat-manifest.json \
+  --save-performance-plan debug/performance-plan.json \
+  --save-performance-report debug/performance-report.json
+```
+
+演出计划失败或返回空 cues 时，普通模式保留剧情并加入一个最低确定性演出，确保显式启用
+`--performance` 后不会得到完全静态的作品；增加 `--strict-performance` 后仍使用退出码 5
+拒绝产物。`--strict` 和 `--strict-performance` 分别控制剧情校验和演出校验。
+
 ### 使用本地素材包
 
 仓库提供一套可公开发布的 CC0 Chronicle 示例素材：

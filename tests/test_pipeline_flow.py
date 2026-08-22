@@ -8,10 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from repo2gal.errors import AssetPackError, UsageError, ValidationFailed
+from repo2gal.errors import AssetPackError, GenerationError, UsageError, ValidationFailed
 from repo2gal.fetcher import Contributor, RepoContext
 from repo2gal.generator import Cast
 from repo2gal.pipeline import RunOptions, run_pipeline
+from repo2gal.performance import extract_beats
 
 SCRIPT = "say:这是现成剧本。\nend;\n"
 LLM_TEXT = "say:LLM 生成的剧本。\nend;\n"
@@ -248,8 +249,221 @@ def test_public_assets_requires_asset_pack_before_fetch(tmp_path):
     assert not called
 
 
+def test_performance_audit_options_require_performance_flag(tmp_path):
+    options = make_options(tmp_path, save_beat_manifest=tmp_path / "beats.json")
+    with pytest.raises(UsageError, match="--performance"):
+        run(tmp_path, options=options)
+
+
+def test_strict_performance_requires_performance_flag(tmp_path):
+    options = make_options(tmp_path, strict_performance=True)
+    with pytest.raises(UsageError, match="--performance"):
+        run(tmp_path, options=options)
+
+
 def test_default_assets_reject_change_figure_reference(tmp_path):
     llm = FakeLLM(text="changeFigure:character.guide.normal;\nend;\n")
     artifacts = run(tmp_path, llm=llm, package_fn=lambda clean, output, **kw: output)
     assert artifacts.report.downgrades == 1
     assert artifacts.clean.splitlines()[0].startswith(";[repo2gal]")
+
+
+def test_performance_calls_llm_twice_and_merges_compiled_output(tmp_path):
+    script = tmp_path / "story.txt"
+    story = "say:第一句。\nend;\n"
+    script.write_text(story, encoding="utf-8")
+    manifest = extract_beats("say:第一句。;\nend;\n", speakers={"widget"})
+    plan = {
+        "$schema": "https://repo2gal.dev/schemas/performance-plan/v1.json",
+        "schemaVersion": 1,
+        "sceneId": "start",
+        "storyHash": manifest.story_hash,
+        "profile": "chronicle-subtle",
+        "cues": [
+            {
+                "id": "cue000001",
+                "beatId": "b000001",
+                "anchor": "during",
+                "actions": [
+                    {"kind": "screen.effect", "preset": "snow", "intensity": "subtle"}
+                ],
+            }
+        ],
+    }
+
+    class TwoStageLLM:
+        def __init__(self):
+            self.calls = []
+
+        def complete(self, prompt, *, temperature=0.8):
+            self.calls.append((prompt, temperature))
+            return __import__("json").dumps(plan)
+
+    llm = TwoStageLLM()
+    options = make_options(
+        tmp_path,
+        script=script,
+        performance=True,
+        save_beat_manifest=tmp_path / "beats.json",
+        save_performance_plan=tmp_path / "plan.json",
+        save_performance_report=tmp_path / "report.json",
+    )
+    # The supplied script is used, so the first call is the performance call only.
+    artifacts = run(tmp_path, options=options, llm=llm, package_fn=lambda clean, output, **kw: output)
+    assert len(llm.calls) == 1
+    assert llm.calls[0][1] == 0.2
+    assert "pixiInit;" in artifacts.clean
+    assert artifacts.performance_report is not None
+    assert artifacts.performance_report.semantic_valid is True
+    assert (tmp_path / "beats.json").exists()
+    assert (tmp_path / "plan.json").exists()
+    assert (tmp_path / "report.json").exists()
+
+
+def test_invalid_performance_falls_back_but_strict_performance_fails(tmp_path):
+    script = tmp_path / "story.txt"
+    script.write_text(SCRIPT, encoding="utf-8")
+
+    class InvalidPerformanceLLM:
+        def complete(self, prompt, *, temperature=0.8):
+            return "not-json"
+
+    options = make_options(tmp_path, script=script, performance=True)
+    artifacts = run(
+        tmp_path,
+        options=options,
+        llm=InvalidPerformanceLLM(),
+        package_fn=lambda clean, output, **kw: output,
+    )
+    assert "pixiPerform:snow;" in artifacts.clean
+    assert "say:这是现成剧本。;" in artifacts.clean
+    assert artifacts.performance_report.degraded is True
+
+    strict_options = make_options(tmp_path, script=script, performance=True, strict_performance=True)
+    with pytest.raises(ValidationFailed, match="strict-performance"):
+        run(tmp_path, options=strict_options, llm=InvalidPerformanceLLM())
+
+
+def test_valid_empty_plan_uses_fallback_and_strict_performance_rejects(tmp_path):
+    script = tmp_path / "story.txt"
+    script.write_text(SCRIPT, encoding="utf-8")
+    manifest = extract_beats("say:这是现成剧本。;\nend;\n", speakers={"widget"})
+    empty_plan = {
+        "$schema": "https://repo2gal.dev/schemas/performance-plan/v1.json",
+        "schemaVersion": 1,
+        "sceneId": "start",
+        "storyHash": manifest.story_hash,
+        "profile": "chronicle-subtle",
+        "cues": [],
+    }
+
+    class EmptyPerformanceLLM:
+        def complete(self, prompt, *, temperature=0.8):
+            return __import__("json").dumps(empty_plan)
+
+    options = make_options(tmp_path, script=script, performance=True)
+    artifacts = run(
+        tmp_path,
+        options=options,
+        llm=EmptyPerformanceLLM(),
+        package_fn=lambda clean, output, **kw: output,
+    )
+    assert "pixiPerform:snow;" in artifacts.clean
+    assert artifacts.performance_report.degraded is True
+
+    strict_options = make_options(tmp_path, script=script, performance=True, strict_performance=True)
+    with pytest.raises(ValidationFailed, match="strict-performance"):
+        run(tmp_path, options=strict_options, llm=EmptyPerformanceLLM())
+
+
+def test_no_dialogue_plan_uses_unanchored_scene_effect_fallback(tmp_path):
+    script = tmp_path / "story.txt"
+    script.write_text("intro:只有标题;\nend;\n", encoding="utf-8")
+    empty_plan = {
+        "$schema": "https://repo2gal.dev/schemas/performance-plan/v1.json",
+        "schemaVersion": 1,
+        "sceneId": "start",
+        "storyHash": extract_beats("intro:只有标题;\nend;\n").story_hash,
+        "profile": "chronicle-subtle",
+        "cues": [],
+    }
+
+    class EmptyPerformanceLLM:
+        def complete(self, prompt, *, temperature=0.8):
+            return __import__("json").dumps(empty_plan)
+
+    options = make_options(tmp_path, script=script, performance=True)
+    artifacts = run(
+        tmp_path,
+        options=options,
+        llm=EmptyPerformanceLLM(),
+        package_fn=lambda clean, output, **kw: output,
+    )
+    assert artifacts.clean.startswith(";[repo2gal performance] baseline\npixiInit;\npixiPerform:snow;")
+    assert artifacts.performance_report.compiled_command_count == 2
+
+
+def test_repaired_transition_compiles_normally_but_strict_performance_rejects(tmp_path):
+    script = tmp_path / "story.txt"
+    transition_story = "changeBg:bg.webp;\nsay:这是现成剧本。;\nend;\n"
+    script.write_text(transition_story, encoding="utf-8")
+    manifest = extract_beats(transition_story, speakers={"widget"})
+    repaired_plan = {
+        "$schema": "https://repo2gal.dev/schemas/performance-plan/v1.json",
+        "schemaVersion": 1,
+        "sceneId": "start",
+        "storyHash": manifest.story_hash,
+        "profile": "chronicle-subtle",
+        "cues": [{
+            "id": "cue000001",
+            "beatId": "b000001",
+            "anchor": "during",
+            "actions": [{
+                "kind": "screen.transition",
+                "preset": "shockwaveIn",
+                "duration": "short",
+            }],
+        }],
+    }
+
+    class RepairedPerformanceLLM:
+        def complete(self, prompt, *, temperature=0.8):
+            return __import__("json").dumps(repaired_plan)
+
+    options = make_options(tmp_path, script=script, performance=True)
+    artifacts = run(
+        tmp_path,
+        options=options,
+        llm=RepairedPerformanceLLM(),
+        package_fn=lambda clean, output, **kw: output,
+    )
+    assert "changeBg:bg.webp -enter=shockwaveIn -enterDuration=500;" in artifacts.clean
+    assert artifacts.performance_report.degraded is True
+
+    strict_options = make_options(tmp_path, script=script, performance=True, strict_performance=True)
+    with pytest.raises(ValidationFailed, match="strict-performance"):
+        run(tmp_path, options=strict_options, llm=RepairedPerformanceLLM())
+
+
+def test_performance_llm_failure_falls_back_but_strict_performance_fails(tmp_path):
+    script = tmp_path / "story.txt"
+    script.write_text(SCRIPT, encoding="utf-8")
+
+    class FailedPerformanceLLM:
+        def complete(self, prompt, *, temperature=0.8):
+            raise GenerationError("演出服务不可用")
+
+    options = make_options(tmp_path, script=script, performance=True)
+    artifacts = run(
+        tmp_path,
+        options=options,
+        llm=FailedPerformanceLLM(),
+        package_fn=lambda clean, output, **kw: output,
+    )
+    assert artifacts.performance_report.degraded is True
+    assert "pixiPerform:snow;" in artifacts.clean
+    assert "say:这是现成剧本。;" in artifacts.clean
+
+    strict_options = make_options(tmp_path, script=script, performance=True, strict_performance=True)
+    with pytest.raises(ValidationFailed, match="strict-performance"):
+        run(tmp_path, options=strict_options, llm=FailedPerformanceLLM())

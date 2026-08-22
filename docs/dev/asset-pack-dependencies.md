@@ -14,6 +14,7 @@ Repo2Gal 不自行实现 JSON Schema、SemVer、SPDX、BCP 47、文件类型识�
 | BCP 47 | `langcodes>=3.5.1,<4` | `tag_is_valid()`；适配层先拒绝 `_`、空 subtag 和非 ASCII | 3.5.1（2025-12）；迁移后仓库 31 stars；2026 年仍维护，未 archived | MIT；默认纯 Python，不安装非必需语言数据 extra |
 | MIME magic | `python-magic>=0.4.27,<0.5` + `libmagic` | `magic.from_buffer(..., mime=True)`；只读取受限头部，不解压，不按扩展名猜测 | Python wrapper 2,917 stars；PyPI 0.4.27，仓库 2026-07 仍有提交，未 archived | wrapper MIT，libmagic BSD-style；依赖系统 magic 数据库，结果需做少量 IANA alias 归一化 |
 | CSS Color | `coloraide>=8.11.1,<9` | `Color.match(..., fullmatch=True)`；支持 CSS Color 4 与 `oklch()`，适配层拒绝其私有 `color(--*)` 扩展 | 8.11.1（2026-08）；351 stars；2026-08 仍有提交，未 archived | MIT；纯 Python，无网络和文件访问 |
+| 图片尺寸/结构 | `Pillow>=12.3,<13` | `Image.open()`、`size`、`verify()`；核对 framing 依赖的真实像素尺寸 | 12.3.0（2026-07）；13,770 stars；2026-08 仍有提交，未 archived | MIT-CMU，GPL-3.0 兼容；含原生 codec，保留解压炸弹保护并限制格式 |
 
 公开来源：
 
@@ -43,3 +44,5 @@ Repo2Gal 不自行实现 JSON Schema、SemVer、SPDX、BCP 47、文件类型识�
 - 包内逐级使用 `openat`/`O_NOFOLLOW`；打包时在同一源 fd 上哈希并复制，目标以 `O_EXCL`
   创建，处理“校验后文件被替换”的 TOCTOU；缺少这些 OS 能力时只拒绝 Asset Pack 路径；
 - 不执行包内脚本，不下载远程 `$ref`，不转码用户素材。
+- 图片使用 Pillow 从安全打开的文件描述符核对真实宽高和基本结构；不关闭
+  `DecompressionBombWarning`，不接受 EPS/TIFF 等 Schema 未声明格式。

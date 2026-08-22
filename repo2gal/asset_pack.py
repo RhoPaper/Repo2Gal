@@ -10,6 +10,7 @@ import re
 import shutil
 import stat
 import tempfile
+import warnings
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib import resources
@@ -21,6 +22,7 @@ import semver
 from coloraide import Color
 from jsonschema import Draft202012Validator, FormatChecker
 from packaging.licenses import InvalidLicenseExpression, canonicalize_license_expression
+from PIL import Image, UnidentifiedImageError
 
 from .errors import AssetPackError
 
@@ -55,6 +57,12 @@ _MIME_ALIASES = {
     "audio/vnd.wave": "audio/wav",
     "audio/x-flac": "audio/flac",
     "image/jpg": "image/jpeg",
+}
+_PIL_FORMATS = {
+    "image/png": "PNG",
+    "image/jpeg": "JPEG",
+    "image/webp": "WEBP",
+    "image/avif": "AVIF",
 }
 
 _BCP47_LEXICAL = re.compile(r"^[A-Za-z0-9]{1,8}(?:-[A-Za-z0-9]{1,8})*$")
@@ -250,6 +258,27 @@ def _detected_mime(sample: bytes, *, label: str) -> str:
     return _MIME_ALIASES.get(detected, detected)
 
 
+def _image_dimensions(root: Path, relative: str, *, label: str, mime_type: str) -> tuple[int, int]:
+    file_fd = open_asset_pack_file(root, relative, label=label)
+    try:
+        with os.fdopen(file_fd, "rb") as stream:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", Image.DecompressionBombWarning)
+                with Image.open(stream, formats=[_PIL_FORMATS[mime_type]]) as image:
+                    dimensions = image.size
+                    image.verify()
+                    return dimensions
+    except (
+        OSError,
+        SyntaxError,
+        ValueError,
+        UnidentifiedImageError,
+        Image.DecompressionBombWarning,
+        Image.DecompressionBombError,
+    ) as exc:
+        raise AssetPackError(f"无法安全读取图片尺寸或结构：{label}（{exc}）") from exc
+
+
 def _validate_profiles(manifest: dict[str, Any], assets: dict[str, Asset]) -> None:
     profiles = set(manifest["profiles"])
     types = {asset.type for asset in assets.values()}
@@ -342,6 +371,9 @@ def load_asset_pack(path: Path | str, *, public: bool = False) -> AssetPack:
             raise AssetPackError(
                 f"逻辑 ID {logical_id!r} 必须以素材类型 {item['type']!r} 加点号开头"
             )
+        framing = item.get("framing")
+        if framing is not None and framing["bottom"] - framing["top"] < 0.1:
+            raise AssetPackError(f"素材 {logical_id} framing 的 bottom 必须显著大于 top")
         size, actual_hash, mime_sample, _ = _inspect_pack_file(
             root,
             item["file"],
@@ -365,6 +397,19 @@ def load_asset_pack(path: Path | str, *, public: bool = False) -> AssetPack:
             raise AssetPackError(
                 f"素材 {logical_id} MIME 不匹配：声明 {expected_mime}，magic 检测 {actual_mime}"
             )
+        if expected_mime.startswith("image/"):
+            actual_dimensions = _image_dimensions(
+                root,
+                item["file"],
+                label=f"素材 {logical_id}",
+                mime_type=expected_mime,
+            )
+            declared_dimensions = (item["width"], item["height"])
+            if actual_dimensions != declared_dimensions:
+                raise AssetPackError(
+                    f"素材 {logical_id} 图片尺寸不匹配：声明 {declared_dimensions[0]}x{declared_dimensions[1]}，"
+                    f"实际 {actual_dimensions[0]}x{actual_dimensions[1]}"
+                )
         if actual_hash != item["sha256"]:
             raise AssetPackError(
                 f"素材 {logical_id} SHA-256 不匹配：期望 {item['sha256']}，实际 {actual_hash}"

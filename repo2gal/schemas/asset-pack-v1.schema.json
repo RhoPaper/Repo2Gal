@@ -138,6 +138,7 @@
         "height": {"type": "integer", "minimum": 1, "maximum": 32768},
         "character": {"type": "string", "minLength": 1, "maxLength": 80},
         "emotion": {"type": "string", "minLength": 1, "maxLength": 80},
+        "framing": {"$ref": "#/$defs/characterFraming"},
         "loop": {"type": "boolean"},
         "license": {"$ref": "#/$defs/licenseBase"}
       },
@@ -158,6 +159,17 @@
           "then": {"properties": {"mimeType": {"pattern": "^audio/"}}}
         }
       ]
+    },
+    "characterFraming": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "top", "bottom", "centerX"],
+      "properties": {
+        "mode": {"const": "upper-body"},
+        "top": {"type": "number", "minimum": 0, "maximum": 1},
+        "bottom": {"type": "number", "minimum": 0, "maximum": 1},
+        "centerX": {"type": "number", "minimum": 0, "maximum": 1}
+      }
     },
     "theme": {
       "type": "object",

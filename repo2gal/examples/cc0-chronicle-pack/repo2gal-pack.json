@@ -2,7 +2,7 @@
   "$schema": "https://repo2gal.dev/schemas/asset-pack/v1.json",
   "manifestVersion": 1,
   "name": "@repo2gal/example-cc0-chronicle",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "Repo2Gal Chronicle Starter Pack",
   "description": "用于编年模式的深色档案馆、社区房间、引导者立绘和氛围音乐。",
   "authors": [
@@ -61,7 +61,13 @@
       "height": 1537,
       "sha256": "4431f72b91d07b0222c594b96d0246fda7f75d11a1eb3969e5f9919b2cbff515",
       "character": "guide",
-      "emotion": "normal"
+      "emotion": "normal",
+      "framing": {
+        "mode": "upper-body",
+        "top": 0.0384,
+        "bottom": 0.6669,
+        "centerX": 0.5059
+      }
     },
     "bgm.archive": {
       "type": "bgm",

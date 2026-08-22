@@ -9,7 +9,9 @@
 真实历史——它为何诞生、经历过哪些争论、社区如何演变。剧情素材全部来自仓库的真实
 源码、README、Issue、PR、Discussion、wiki 与 Release。
 
-当前版本：v0.4.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。
+当前版本：v0.5.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
+[Semantic Versioning 2.0.0](https://semver.org/)，具体升级和同步规则见
+[CONTRIBUTING.md](CONTRIBUTING.md#版本管理)。
 
 ## 演示
 
@@ -35,6 +37,7 @@ https://repo2gal.rhopaper.top/demo
 ### 剧本生成
 
 - [x] Chronicle 模式剧本生成（单场景线性叙事 + 少量分支）
+- [x] 显式 `--performance` 动态演出规划（Beat Manifest + Performance Plan v1）
 - [x] 确定性角色表白名单（项目化身 / 核心贡献者 / 技术栈精灵）
 - [x] 任意 OpenAI 兼容端点（`--base-url` / `--model` / 环境变量）
 - [x] `--dry-run` / `--script` / `--save-prompt` 省钱与离线路径
@@ -47,6 +50,7 @@ https://repo2gal.rhopaper.top/demo
 - [x] WebGAL 语法白名单校验与静默降级（validator，不可绕过）
 - [x] 死跳转修复、Markdown 噪声剥离、缺 `end;` 自动补齐
 - [x] `--strict` 严格模式：存在降级即拒绝打包（退出码 5）
+- [x] `--strict-performance`：演出计划失败即拒绝打包（沿用退出码 5）
 
 ### 打包与产物
 
@@ -60,8 +64,10 @@ https://repo2gal.rhopaper.top/demo
 ### 素材系统
 
 - [x] Asset Pack v1 Schema 与安全校验（SemVer、SPDX、BCP 47、MIME、SHA-256）
+- [x] Performance Plan v1 动态演出（显式开启、确定性编译、可选审计 JSON）
 - [x] Local Provider（`assets init/validate`、单包 WebGAL Adapter）
 - [x] 内置 CC0 Chronicle 示例包（与 WebGAL 默认素材并存）
+- [x] 角色 framing 元数据：全身原图非破坏性编译为 WebGAL 居中半身构图
 - [ ] Git Provider（开源素材包下载）
 - [ ] AI Provider（AI 生成素材）
 
@@ -69,7 +75,7 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] 统一错误体系与退出码契约、错误信息脱敏
 - [x] 显式管线（pipeline）与可注入依赖，全流程可离线端到端测试
-- [x] 离线测试套件（119 项）
+- [x] 离线测试套件（165 项）
 - [x] 文档体系：用户指南、开发规约、Agent 指南、部署文档
 - [ ] python-github-backup 真实 fixture 回归样本
 - [ ] 真实 LLM golden cases 评测集
@@ -101,6 +107,24 @@ python3 -m http.server -d output/<repo> 8000   # 打开 http://localhost:8000 �
 .venv/bin/repo2gal assets validate builtin:cc0-chronicle --public
 .venv/bin/repo2gal owner/repo \
   --asset-pack builtin:cc0-chronicle --public-assets
+```
+
+显式开启动态演出。默认 profile 是 `chronicle-subtle`，第二次 LLM 只生成结构化演出计划，
+Python 再编译为 WebGAL 4.6.2 命令：
+
+```bash
+.venv/bin/repo2gal owner/repo \
+  --asset-pack builtin:cc0-chronicle --public-assets \
+  --performance
+```
+
+调试时可选择性保存中间审计 JSON；这些参数必须与 `--performance` 一起使用：
+
+```bash
+.venv/bin/repo2gal owner/repo --performance \
+  --save-beat-manifest debug/beat-manifest.json \
+  --save-performance-plan debug/performance-plan.json \
+  --save-performance-report debug/performance-report.json
 ```
 
 不传 `--asset-pack` 时继续使用 WebGAL 发行版默认素材；传入素材包后，默认背景/BGM 仍会
@@ -165,6 +189,7 @@ GitHub REST metadata ─┘    筛选叙事素材      写剧本    收敛降级
 | `packager.py` | WebGAL 发行版缓存、原子打包、最小 flowchart 生成 |
 | `asset_pack.py` | Asset Pack Schema、本地路径/授权/MIME/SHA/Profile 校验 |
 | `webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写与第三方声明聚合 |
+| `performance.py` | Beat Manifest、演出计划校验、角色状态机与确定性 WebGAL 编译 |
 | `pipeline.py` | 流程编排唯一持有者：四模式矩阵与阶段产物传递 |
 | `config.py` | 默认值、环境解析与路径常量单一来源 |
 | `errors.py` | 统一错误类型 → 退出码契约与集中脱敏 |
@@ -206,6 +231,15 @@ v0.4.0 已实现 Asset Pack v1 Schema、Local Provider、安全校验、WebGAL A
 `THIRD_PARTY_NOTICES.md`。剧本只引用 `background.archive` 等逻辑 ID，确定性 Adapter
 再映射到 WebGAL 裸文件名；LLM 不决定路径、许可证或复制行为。
 
+动态演出通过 `--performance` 显式开启。LLM 1 生成剧情，LLM 2 生成 Performance Plan JSON；
+`performance.py` 使用 beat_id、角色状态机、能力表和固定编译宏生成演出命令。无效演出计划
+默认保留剧情并生成一个最低确定性演出，避免 `--performance` 产出完全静态的作品；
+`--strict-performance` 时仍沿用退出码 5 拒绝产物。
+
+角色素材可以保留完整全身透明图，并通过 Asset Pack 的归一化 `framing` 标注默认头顶、
+上半身底线和视觉中心。WebGAL Adapter 会生成确定性 `changeFigure -transform`，把角色放在
+画面中间并让腿部位于屏幕下方；演出移动、摇晃和缩放会保留这套基础构图。
+
 三种 Provider 最终使用同一个 `repo2gal-pack.json` 格式。当前只实现本地目录包；Git 下载
 和 AI 生成仍是后续计划。内置 CC0 示例随 wheel 分发，可用 `builtin:cc0-chronicle` 引用；
 源码位于 `repo2gal/examples/cc0-chronicle-pack/`。外部媒体保持自己的许可证，不捆进 GPL
@@ -230,6 +264,8 @@ v0.4.0 已实现 Asset Pack v1 Schema、Local Provider、安全校验、WebGAL A
 - [docs/dev/asset-pack-spec.md](docs/dev/asset-pack-spec.md) — Asset Pack v1 规范与实现范围
 - [docs/dev/asset-pack-dependencies.md](docs/dev/asset-pack-dependencies.md) —
   Asset Pack 标准校验依赖调研与安全边界
+- [docs/dev/performance-plan-spec.md](docs/dev/performance-plan-spec.md) — Performance Plan v1
+  动态演出协议、状态机和编译边界
 - [docs/dev/deployment.md](docs/dev/deployment.md) — 在线演示的部署与更新方式
 - [docs/dev/early/](docs/dev/early/) — 早期规划文档（v1–v9）及其勘误，仅历史参考
 

@@ -2,9 +2,12 @@
 
 > 本文描述**当前实现和已锁定的边界**。历史设想放在 `docs/dev/early/`，不得把早期规划当成现状。
 
-当前基线：`v0.4.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
-环境中端到端实测通过。v0.3.0 完成显式管线与统一错误域重构；v0.4.0 落地 Asset Pack v1
-Schema、Local Provider、WebGAL Adapter、第三方声明聚合和内置 CC0 示例包。
+当前基线：`v0.5.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
+环境中端到端实测通过。v0.4.0 落地 Asset Pack v1；v0.5.0 增加显式 Performance Plan
+动态演出、状态机校验和确定性 WebGAL 编译。
+
+版本号采用 SemVer 2.0.0；当前从 v0.4.0 升至 v0.5.0 是因为新增向后兼容的 Performance
+Plan、framing 和 CLI 能力。完整升级与多文件同步规则见 `CONTRIBUTING.md`「版本管理」。
 
 ## 1. 产品定位
 
@@ -48,13 +51,21 @@ generator.build_cast()               确定性选角（角色表白名单）
 generator.build_prompt()             确定性 prompt 组装（只暴露逻辑素材 ID）
        │
        ▼
-OpenAI-compatible LLM                唯一非确定性步骤：写剧本（llm.LLMClient）
-       │
-       ▼
+OpenAI-compatible LLM 1              非确定性：写剧情（llm.LLMClient）
+        │
+        ▼
 validator.sanitize()                 命令/角色/逻辑素材 ID 校验与死跳转修复（硬边界）
-       │
-       ▼
-packager.package()                   WebGAL 模板 + 素材适配 + notices，staging 内完成
+        │
+        ▼
+performance.extract_beats()          确定性 Beat Manifest
+        │
+        ├── `--performance` ──► LLM 2：Performance Plan JSON
+        │                              │
+        │                              ▼
+        │                     performance validator/compiler
+        │
+        ▼
+packager.package()                   WebGAL 模板 + 素材/演出适配 + notices，staging 内完成
        │
        ▼
 output/<repo>/                       可由任意静态服务器托管
@@ -128,7 +139,8 @@ Repo2Gal **不负责**：
 
 - 协议：OpenAI-compatible Chat Completions
 - 默认配置：环境变量 `REPO2GAL_BASE_URL`、`REPO2GAL_MODEL`、`REPO2GAL_API_KEY`
-- LLM 只负责叙事创作，不负责 GitHub 抓取、角色白名单、流程校验和资源打包
+- LLM 负责剧情创作和受限的 Performance Plan 意图，不负责 GitHub 抓取、角色白名单、
+  WebGAL 原始命令、坐标、时序、流程校验和资源打包
 
 ### 3.5 Asset Pack 标准校验依赖
 
@@ -151,6 +163,7 @@ SPDX expression 使用 `packaging.licenses`，BCP 47 使用 `langcodes`，CSS Co
 | `packager.py` | 获取发行版、原子替换、最小 flowchart、输出静态站点 | 修改 WebGAL 引擎 |
 | `asset_pack.py` | Schema、本地路径/授权/MIME/SHA/Profile 校验与本地包初始化 | 下载素材、执行包内脚本 |
 | `webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写、第三方声明聚合 | 转码、多包覆盖、许可证猜测 |
+| `performance.py` | Beat Manifest、Performance Plan Schema/语义校验、状态机和 WebGAL 编译 | 直接信任 LLM 命令、任意引擎参数 |
 | `pipeline.py` | 流程编排唯一持有者：四模式矩阵、阶段产物传递 | 参数解析、终端渲染 |
 | `config.py` | 默认值、环境解析、路径常量、密钥脱敏显示 | 业务逻辑 |
 | `errors.py` | 统一错误类型与退出码契约、错误正文脱敏 | 业务逻辑 |
@@ -231,6 +244,13 @@ v0.4.0 只实现 Local Provider，Git/AI Provider 仍是计划；核心没有 Pr
 默认背景/BGM 也会合并进 prompt 与 validator catalog，并由 Adapter 原样放行。
 逻辑 ID 强制以素材类型和点号开头，不能与 WebGAL 默认裸文件名形成歧义或遮蔽。
 
+角色可用归一化 `framing` 标注 `top`、`bottom` 和 `centerX`。WebGAL Adapter 根据
+2560×1440 设计舞台计算 `changeFigure -transform`，保留全身原图但默认呈现居中半身构图；
+Performance 编译器在移动、摇晃和缩放时继续保留该 framing。
+未声明 framing 的角色也会使用默认 contain transform 和中心基准，避免 WebGAL 原生
+`left/right` 基准与 Performance 语义槽位产生双重偏移。剧情重复换图、退场和前向分支汇合
+会进入状态版本/合并分析；汇合状态不一致的角色不允许继续生成目标动画。
+
 校验顺序为：1 MiB 有界读取/重复键 → Draft 2020-12 Schema 与标准格式 → 普通文件和路径
 边界 → 扩展名与 magic MIME → SHA-256 → Profile → 公开授权策略。媒体单文件上限 128 MiB，
 授权材料单文件上限 8 MiB、最多 512 个，全部声明文件总计上限 512 MiB。
@@ -284,9 +304,15 @@ evidence 保存在 `third_party/asset-packs/`。
   LLM 薄客户端（llm.py）、原子打包与最小 flowchart、`--dry-run` 模式矩阵语义修正
 - v0.4.0：Asset Pack v1 Schema、Local Provider、素材逻辑 ID validator、WebGAL Adapter、
   `THIRD_PARTY_NOTICES.md` 和 CC0 Chronicle 示例包
+- v0.5.0：显式 `--performance`、Beat Manifest、Performance Plan v1、演出状态机与
+  WebGAL 4.6.2 确定性编译
 
-`v0.4.0` 结论：Chronicle MVP 与单本地素材包闭环均已实现；Git/AI Provider 仍是计划，
+`v0.5.0` 结论：Chronicle MVP、单本地素材包闭环和显式动态演出均已实现；Git/AI Provider 仍是计划，
 不得写成现有能力。
+
+动态演出已实现为显式 opt-in 功能：`--performance` 使用默认 `chronicle-subtle` profile，
+第二次 LLM 输出 Performance Plan v1 JSON，Python 生成 Beat Manifest、执行状态/预算校验、
+编译有限 WebGAL 4.6.2 演出宏并按 beat_id 合并。审计 JSON 只有用户指定保存参数时才写入。
 
 推荐下一步：
 

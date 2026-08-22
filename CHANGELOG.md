@@ -1,6 +1,31 @@
 # 更新日志
 
-本文件记录面向用户可感知的变化。内部重构细节见各版本提交历史。
+本文件记录面向用户可感知的变化。内部重构细节见各版本提交历史。版本号遵循
+[Semantic Versioning 2.0.0](https://semver.org/)；`0.y.z` 阶段的新功能提升 `MINOR`，
+兼容缺陷修复提升 `PATCH`，公开不兼容变更至少提升 `MINOR`。
+
+## v0.5.0 — 2026-08-22
+
+**Performance Plan v1 动态演出**：
+
+- 新增显式 `--performance`，默认 profile 为 `chronicle-subtle`；
+- 剧情校验后确定性生成 Beat Manifest，第二次 LLM 只输出结构化演出意图 JSON；
+- 新增 `figure.enter`、`figure.exit`、`figure.move`、`figure.shake`、`figure.animate`、
+  `screen.transition` 和场景生命周期 `screen.effect`；
+- Python 负责角色状态机、演出预算、WebGAL 4.6.2 能力表、坐标、时长、runtime ID 和时序编译；
+- 演出计划无效或返回空 cues 时，普通模式保留剧情并加入最低确定性演出，
+  `--strict-performance` 沿用退出码 5；
+- 新增 `--save-beat-manifest`、`--save-performance-plan`、`--save-performance-report`，
+  仅在指定时写出调试审计 JSON；
+- 新增离线 Performance Plan Schema、状态机和 WebGAL golden tests，离线测试扩充至 165 项。
+- 修复真实模型遗漏 `screen.transition.phase` 导致整份计划 fallback 的问题，无歧义时默认补
+  `enter`；模型复制错误的运行元数据由 Python 绑定；
+- 新增角色归一化 framing，内置全身角色图非破坏性编译为居中半身 WebGAL transform，
+  动态移动、摇晃和缩放保持该基础构图。
+- 新增 Pillow 图片结构/真实尺寸校验；所有 Asset Pack 角色（含未声明 framing 的包）统一使用
+  中心基准并覆盖不可信原始 transform；分支汇合状态不一致时拒绝角色演出。
+- `screen.transition` 直接补入对应 `changeBg` 的 `-enter/-exit` 参数，使 shockwave 与背景切换
+  同时发生，不再在新背景已经显示后播放。
 
 ## v0.4.0 — 2026-08-21
 
@@ -18,7 +43,6 @@
 - 加入 RhoPaper 制作并以 CC0-1.0 提供的 Chronicle 示例包；BGM 转为 OGG 后整包约 7.7 MiB，
   不传素材包时仍保留 WebGAL 默认素材；
 - 依赖调研与实现边界落盘，离线测试从 85 项扩充到 119 项。
-
 ## v0.3.0 — 2026-08-14
 
 **流程架构重构**（产品功能与 v0.2.0 一致，行为修正与内部优化）：

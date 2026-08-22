@@ -9,9 +9,15 @@ Repo2Gal 把 GitHub 仓库转换为基于 WebGAL 的“可游玩开源项目文�
 当前只实现 Chronicle（编年）模式：使用真实源码、README、Issue、PR、Discussion、wiki
 和 Release 生成项目历史视觉小说。不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
 
-当前稳定基线为 `v0.4.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
+当前稳定基线为 `v0.5.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
 和 WebGAL 产物的端到端实测；v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI）；
-v0.4.0 实现 Asset Pack v1 本地单包闭环与内置 CC0 Chronicle 示例包。
+v0.4.0 实现 Asset Pack v1 本地单包闭环与内置 CC0 Chronicle 示例包；v0.5.0 实现显式
+Performance Plan v1 动态演出闭环。
+
+项目版本严格遵循 SemVer 2.0.0。`0.y.z` 阶段兼容修复提升 PATCH，向后兼容新功能或公开
+不兼容变更提升 MINOR；`1.0.0` 后不兼容变更提升 MAJOR。发版必须同步 `pyproject.toml`、
+`repo2gal/__init__.py`、README、CHANGELOG、AGENTS 和架构文档，规则以 `CONTRIBUTING.md`
+“版本管理”为准。
 
 在线演示（dogfooding 产物）：https://repo2gal.rhopaper.top/demo ，
 部署与更新方式见 `docs/dev/deployment.md`。
@@ -92,7 +98,9 @@ GitHub GraphQL；禁止借此恢复通用 API 客户端、分页器、限流器�
 
 使用 OpenAI-compatible Chat Completions 协议。LLM 只负责剧本创作。
 
-LLM 不负责：GitHub 抓取、资源路径决策、角色白名单、流程跳转校验、许可证判断和打包。
+LLM 不负责：GitHub 抓取、资源路径决策、角色白名单、流程跳转校验、许可证判断、WebGAL
+原始演出命令、坐标、时序和打包。第二次 LLM 只能输出 Performance Plan 语义 JSON，仍需
+普通代码做 Schema/状态机校验和编译。
 所有可确定的工作必须由普通代码完成。
 
 ## 4. 架构约束
@@ -100,8 +108,10 @@ LLM 不负责：GitHub 抓取、资源路径决策、角色白名单、流程跳
 ### 确定性与生成式职责分离
 
 ```text
-python-github-backup -> RepoContext -> LLM -> validator -> WebGAL package
-      确定性              确定性      非确定性     确定性        确定性
+python-github-backup -> RepoContext -> LLM 1 -> validator -> Beat Manifest
+      确定性              确定性          非确定性      确定性       确定性
+                                      -> LLM 2 -> Performance Validator -> WebGAL compiler
+                                         非确定性       确定性              确定性
 ```
 
 不要引入 Agent tool-calling 循环来替代确定性流水线。当前流程是一条直线，不需要 PocketFlow、
@@ -110,7 +120,8 @@ LangChain 或复杂 DAG 框架。只有出现真实的并行分章、map-reduce 
 ### Validator 不可绕过
 
 WebGAL 会把未知命令静默解释为 speaker，不会报错。因此“页面能打开”不代表脚本正确。
-所有 LLM 输出打包前必须经过 `validator.sanitize()`。
+剧情脚本等 WebGAL 文本输出打包前必须经过 `validator.sanitize()`；Performance Plan JSON
+必须经过独立的 Schema、能力表、角色状态机和预算校验。
 
 角色表由确定性代码生成并作为 validator 白名单。不得允许 LLM 无约束创建角色名。
 
@@ -136,6 +147,9 @@ WebGAL 会把未知命令静默解释为 speaker，不会报错。因此“页�
 素材包不得直接使用 WebGAL 目录语义。先使用 `background.archive` 等逻辑 ID，
 再由 WebGAL Adapter 转成 `game/background/archive.webp`。
 
+角色默认构图使用引擎无关归一化 framing 元数据，不在素材包中硬编码 WebGAL 坐标；
+WebGAL Adapter 负责把全身原图编译为居中半身 transform，Performance 动画必须保留该构图。
+
 程序采用 GPL-3.0 不会自动把外部媒体变成 GPL。必须保留各素材许可证；v0.4.0 打包器会
 生成 `THIRD_PARTY_NOTICES.md`、补入 MPL-2.0 正文并保留素材原始授权材料。项目根目录
 `LICENSE` 已锁定 GPL-3.0。
@@ -152,6 +166,7 @@ WebGAL 会把未知命令静默解释为 speaker，不会报错。因此“页�
 | `repo2gal/packager.py` | 官方 WebGAL 发行版缓存、原子打包、最小 flowchart 生成 |
 | `repo2gal/asset_pack.py` | Asset Pack Schema、本地安全/授权/MIME/SHA/Profile 校验与 init |
 | `repo2gal/webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写与第三方声明聚合 |
+| `repo2gal/performance.py` | Beat Manifest、Performance Plan 校验、角色状态机与确定性 WebGAL 编译 |
 | `repo2gal/pipeline.py` | 流程编排唯一持有者：四模式矩阵与阶段产物传递 |
 | `repo2gal/config.py` | 默认值、环境解析与路径常量单一来源 |
 | `repo2gal/errors.py` | 统一错误类型 -> 退出码契约与集中脱敏 |
@@ -198,6 +213,9 @@ export REPO2GAL_API_KEY=sk_xxx
 - `python-github-backup` 不落盘仓库列表元数据，目前由一个受控官方 REST 请求补齐。
 - 全量大仓库备份可能很慢、很大；依赖上游增量机制，不自己再写缓存协议。
 - 当前只有 Chronicle 模式和单场景产物。
+- 动态演出必须显式传 `--performance`；默认 profile 为 `chronicle-subtle`；性能审计 JSON
+  只有指定 `--save-beat-manifest`、`--save-performance-plan` 或 `--save-performance-report`
+  时才写入。
 
 ## 10. 不要做的事
 

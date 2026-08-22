@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://repo2gal.dev/schemas/performance-plan/v1.json",
+  "title": "Repo2Gal Performance Plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schemaVersion", "sceneId", "storyHash", "profile", "cues"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://repo2gal.dev/schemas/performance-plan/v1.json"
+    },
+    "schemaVersion": {"const": 1},
+    "sceneId": {"type": "string", "pattern": "^[A-Za-z0-9._-]{1,80}$"},
+    "storyHash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "profile": {"enum": ["chronicle-subtle", "chronicle-cinematic"]},
+    "cues": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {"$ref": "#/$defs/cue"}
+    }
+  },
+  "$defs": {
+    "cue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "beatId", "anchor", "actions"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^cue[0-9]{6}$"},
+        "beatId": {"type": "string", "pattern": "^b[0-9]{6}$"},
+        "anchor": {"enum": ["before", "during", "after"]},
+        "actions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": {"$ref": "#/$defs/action"}
+        }
+      }
+    },
+    "character": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[^:;\\-\\r\\n]+$"
+    },
+    "duration": {"enum": ["instant", "short", "medium", "long"]},
+    "intensity": {"enum": ["subtle", "normal", "dramatic"]},
+    "action": {
+      "oneOf": [
+        {"$ref": "#/$defs/figureEnter"},
+        {"$ref": "#/$defs/figureExit"},
+        {"$ref": "#/$defs/figureMove"},
+        {"$ref": "#/$defs/figureShake"},
+        {"$ref": "#/$defs/figureAnimate"},
+        {"$ref": "#/$defs/screenTransition"},
+        {"$ref": "#/$defs/screenEffect"}
+      ]
+    },
+    "figureEnter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "character", "slot", "motion", "duration"],
+      "properties": {
+        "kind": {"const": "figure.enter"},
+        "character": {"$ref": "#/$defs/character"},
+        "slot": {"enum": ["left", "center", "right"]},
+        "motion": {"enum": ["none", "from-left", "from-right", "fade"]},
+        "duration": {"$ref": "#/$defs/duration"}
+      }
+    },
+    "figureExit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "character", "motion", "duration"],
+      "properties": {
+        "kind": {"const": "figure.exit"},
+        "character": {"$ref": "#/$defs/character"},
+        "motion": {"enum": ["none", "fade"]},
+        "duration": {"$ref": "#/$defs/duration"}
+      }
+    },
+    "figureMove": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "character", "to", "duration", "easing"],
+      "properties": {
+        "kind": {"const": "figure.move"},
+        "character": {"$ref": "#/$defs/character"},
+        "to": {"enum": ["left", "center", "right"]},
+        "duration": {"$ref": "#/$defs/duration"},
+        "easing": {"enum": ["linear", "easeIn", "easeOut", "easeInOut"]}
+      }
+    },
+    "figureShake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "character", "intensity", "duration"],
+      "properties": {
+        "kind": {"const": "figure.shake"},
+        "character": {"$ref": "#/$defs/character"},
+        "intensity": {"$ref": "#/$defs/intensity"},
+        "duration": {"$ref": "#/$defs/duration"}
+      }
+    },
+    "figureAnimate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "character", "preset", "duration"],
+      "properties": {
+        "kind": {"const": "figure.animate"},
+        "character": {"$ref": "#/$defs/character"},
+        "preset": {"type": "string", "minLength": 1, "maxLength": 80},
+        "duration": {"$ref": "#/$defs/duration"}
+      }
+    },
+    "screenTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "phase", "preset", "duration"],
+      "properties": {
+        "kind": {"const": "screen.transition"},
+        "phase": {"enum": ["enter", "exit"]},
+        "preset": {"type": "string", "minLength": 1, "maxLength": 80},
+        "duration": {"$ref": "#/$defs/duration"}
+      }
+    },
+    "screenEffect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "preset", "intensity"],
+      "properties": {
+        "kind": {"const": "screen.effect"},
+        "preset": {"type": "string", "minLength": 1, "maxLength": 80},
+        "intensity": {"$ref": "#/$defs/intensity"}
+      }
+    }
+  }
+}

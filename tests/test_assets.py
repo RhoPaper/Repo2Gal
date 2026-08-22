@@ -9,10 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from repo2gal.asset_pack import MAX_MANIFEST_BYTES, init_asset_pack, load_asset_pack
+import repo2gal.asset_pack as asset_pack_module
+from repo2gal.asset_pack import Asset, MAX_MANIFEST_BYTES, init_asset_pack, load_asset_pack
 from repo2gal.errors import AssetPackError, PackageError
 from repo2gal.packager import package
-from repo2gal.webgal_assets import install_asset_pack, rewrite_script
+from repo2gal.webgal_assets import figure_framing_transform, install_asset_pack, rewrite_script
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
@@ -121,6 +122,24 @@ def test_logical_id_must_start_with_asset_type(tmp_path):
         load_asset_pack(root)
 
 
+def test_character_framing_requires_meaningful_normalized_range(tmp_path):
+    root = make_pack(tmp_path)
+    manifest = read_manifest(root)
+    item = manifest["assets"].pop("background.archive")
+    item.update(
+        {
+            "type": "character",
+            "character": "guide",
+            "emotion": "normal",
+            "framing": {"mode": "upper-body", "top": 0.7, "bottom": 0.6, "centerX": 0.5},
+        }
+    )
+    manifest["assets"]["character.guide.normal"] = item
+    write_manifest(root, manifest)
+    with pytest.raises(AssetPackError, match="bottom"):
+        load_asset_pack(root)
+
+
 def test_duplicate_json_key_rejected(tmp_path):
     root = make_pack(tmp_path)
     manifest_file = root / "repo2gal-pack.json"
@@ -150,6 +169,35 @@ def test_declared_mime_must_match_magic_and_extension(tmp_path):
     manifest["assets"]["background.archive"]["mimeType"] = "image/jpeg"
     write_manifest(root, manifest)
     with pytest.raises(AssetPackError, match="扩展名"):
+        load_asset_pack(root)
+
+
+def test_declared_image_dimensions_must_match_encoded_file(tmp_path):
+    root = make_pack(tmp_path)
+    manifest = read_manifest(root)
+    manifest["assets"]["background.archive"]["width"] = 2
+    write_manifest(root, manifest)
+    with pytest.raises(AssetPackError, match="图片尺寸不匹配"):
+        load_asset_pack(root)
+
+
+def test_pillow_verify_syntax_error_is_wrapped_as_asset_pack_error(tmp_path, monkeypatch):
+    root = make_pack(tmp_path)
+
+    class BrokenImage:
+        size = (1, 1)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def verify(self):
+            raise SyntaxError("broken PNG file")
+
+    monkeypatch.setattr(asset_pack_module.Image, "open", lambda *args, **kwargs: BrokenImage())
+    with pytest.raises(AssetPackError, match="无法安全读取图片尺寸或结构"):
         load_asset_pack(root)
 
 
@@ -232,7 +280,10 @@ def test_rewrite_script_maps_logical_ids_and_keeps_args():
     )
     out = rewrite_script(script, pack)
     assert "changeBg:background-archive.png -next;" in out
-    assert "changeFigure:character-guide-normal.png -left;" in out
+    assert (
+        'changeFigure:character-guide-normal.png -transform={"position":{"x":-508.697,"y":326.35},'
+        '"scale":{"x":1.538,"y":1.538}};'
+    ) in out
     assert "bgm:bgm-archive.ogg -volume=60;" in out
 
 
@@ -240,6 +291,77 @@ def test_rewrite_script_preserves_webgal_default_assets():
     pack = load_asset_pack(EXAMPLE_PACK)
     script = "changeBg:bg.webp;\nbgm:s_Title.mp3;\nend;\n"
     assert rewrite_script(script, pack) == script
+
+
+def test_character_framing_overrides_untrusted_script_transform():
+    pack = load_asset_pack(EXAMPLE_PACK)
+    script = (
+        'changeFigure:character.guide.normal '
+        '-transform={"position":{"x":9999,"y":9999},"scale":{"x":0.1,"y":0.1}};\n'
+    )
+    out = rewrite_script(script, pack)
+    assert "9999" not in out and "0.1" not in out
+    assert '"position":{"x":-8.697,"y":326.35}' in out
+
+
+def test_safe_enter_semantics_compile_without_preserving_internal_marker():
+    pack = load_asset_pack(EXAMPLE_PACK)
+    script = (
+        "changeFigure:character.guide.normal -left -repo2galEnter=from-left "
+        "-duration=0 -id=fig-guide -next;\n"
+    )
+    out = rewrite_script(script, pack)
+    assert "repo2galEnter" not in out and " -left" not in out
+    assert '"position":{"x":-608.697,"y":326.35}' in out
+    assert '"alpha":0' in out
+
+
+def test_character_without_framing_still_uses_clean_center_based_transform(tmp_path):
+    root = make_pack(tmp_path)
+    manifest = read_manifest(root)
+    item = manifest["assets"].pop("background.archive")
+    item.update({"type": "character", "character": "guide", "emotion": "normal"})
+    manifest["assets"]["character.guide.normal"] = item
+    write_manifest(root, manifest)
+    pack = load_asset_pack(root)
+    script = (
+        'changeFigure:character.guide.normal -left=true -repo2galEnter=from-left '
+        '-transform={"position":{"x":9999,"y":9999}} -id=fig-guide;\n'
+    )
+    out = rewrite_script(script, pack)
+    assert "9999" not in out and "repo2galEnter" not in out and " -left" not in out
+    assert '"position":{"x":-600.0,"y":0.0}' in out
+    assert '"scale":{"x":1.0,"y":1.0}' in out
+
+
+def test_upper_body_framing_compiles_to_centered_webgal_transform():
+    pack = load_asset_pack(EXAMPLE_PACK)
+    transform = figure_framing_transform(pack.assets["character.guide.normal"])
+    assert transform == {
+        "position": {"x": -8.697, "y": 326.35},
+        "scale": {"x": 1.538, "y": 1.538},
+    }
+
+
+def test_upper_body_framing_handles_width_limited_bottom_aligned_images():
+    asset = Asset(
+        logical_id="character.wide.normal",
+        type="character",
+        relative_file=Path("wide.png"),
+        source_file=Path("wide.png"),
+        mime_type="image/png",
+        sha256="0" * 64,
+        size=1,
+        metadata={
+            "width": 2000,
+            "height": 1000,
+            "framing": {"mode": "upper-body", "top": 0.1, "bottom": 0.7, "centerX": 0.5},
+        },
+    )
+    assert figure_framing_transform(asset) == {
+        "position": {"x": 0.0, "y": 152.0},
+        "scale": {"x": 1.812, "y": 1.812},
+    }
 
 
 def test_install_rechecks_hash_after_validation(tmp_path, monkeypatch):
@@ -337,7 +459,7 @@ def test_package_installs_assets_notices_and_preserves_template_defaults(tmp_pat
     notices = (out / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
     assert "CC0-1.0" in notices and "MPL-2.0" in notices
     assert (out / "third_party" / "WebGAL" / "LICENSE").exists()
-    material = out / "third_party" / "asset-packs" / "repo2gal-example-cc0-chronicle-1.0.0"
+    material = out / "third_party" / "asset-packs" / "repo2gal-example-cc0-chronicle-1.1.0"
     assert (material / "LICENSE").exists()
     assert (material / "NOTICE.md").exists()
     assert (material / "repo2gal-pack.json").exists()

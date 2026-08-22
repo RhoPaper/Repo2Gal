@@ -229,3 +229,21 @@ end;
 使用 Asset Pack 时，LLM 与 validator 阶段的三个资源参数是逻辑 ID（例如
 `changeBg:background.archive;`），打包阶段再由 `webgal_assets.py` 改写成上述裸文件名。
 未声明 ID 或素材类型错配会被 validator 注释降级，不会进入 WebGAL 产物。
+
+动态演出使用 `--performance` 时，第二次 LLM 不直接生成本文件中的 WebGAL 命令，而是输出
+`Performance Plan v1` 语义 JSON。`repo2gal/performance.py` 再根据固定的 WebGAL `4.6.2`
+能力表生成 `setTransform`、`setTempAnimation`、
+`pixiInit` 和 `pixiPerform`。模型不能提供坐标、关键帧、runtime target 或 `-next`、
+`-parallel`、`-continue` 参数。设计和动作 Schema 见 `docs/dev/performance-plan-spec.md`。
+`screen.transition` 是例外：编译器不在台词前追加独立动画，而是修改对应的背景命令，例如
+`changeBg:bg.webp -enter=shockwaveIn -enterDuration=1200;`，保证切换和效果同时发生。
+
+Asset Pack 角色声明 `framing.mode=upper-body` 时，WebGAL Adapter 会在最终脚本中确定性追加：
+
+```text
+changeFigure:character.png -transform={"position":{"x":-9,"y":326},"scale":{"x":1.538,"y":1.538}};
+```
+
+WebGAL 4.6.2 使用 2560×1440 Pixi 设计舞台；`position` 是相对默认槽位的设计坐标偏移，
+`scale` 作用于已经按完整纹理 contain 适配后的立绘。正 `y` 向下移动，超出 1440 的腿部由
+舞台裁切。不得用 `userStyleSheet.css` 尝试选择单个 Pixi sprite。

@@ -308,6 +308,27 @@ v0.4.0 WebGAL Adapter 接受 `background`、`character`、`bgm`，分别映射�
 默认裸文件名，禁止素材包静默遮蔽 `bg.webp`、`s_Title.mp3` 等默认资源。
 字体、UI、音效与视频的容器语义保留在路线图中，当前 Schema 不接受这些尚无 Adapter 的类型。
 
+角色素材可选声明引擎无关的归一化 framing：
+
+```json
+{
+  "framing": {
+    "mode": "upper-body",
+    "top": 0.0384,
+    "bottom": 0.6669,
+    "centerX": 0.5059
+  }
+}
+```
+
+`top`、`bottom` 和 `centerX` 都是相对于完整纹理宽高的 0..1 比例，不是 WebGAL 坐标。
+Adapter 根据目标引擎的设计分辨率计算缩放和偏移。这样原包保留可复用的全身图，WebGAL
+产物仍能采用 GalGame 常见的居中半身构图，不需要复制或永久裁切素材。
+Validator 使用 Pillow 核对 manifest 的 `width`/`height` 与图片真实编码尺寸，framing 不能
+依赖未经验证的声明值。
+即使角色不声明 framing，WebGAL Adapter 也会清除脚本中的任意 transform 并编译为中心基准
+的默认 contain 构图；LLM 和手写脚本不能绕过确定性坐标边界。
+
 ## 9. Validator 最低要求
 
 Asset Pack v1 实现不得缺少以下校验：

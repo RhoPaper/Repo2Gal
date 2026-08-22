@@ -93,6 +93,40 @@ def test_cli_maps_options_into_run_options(monkeypatch, tmp_path):
     assert "✓ 完成" in result.output
 
 
+def test_cli_maps_performance_options_into_run_options(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake(options, **kwargs):
+        captured["options"] = options
+        return _artifacts(output_dir=tmp_path / "out")
+
+    monkeypatch.setattr(cli, "run_pipeline", fake)
+    result = CliRunner().invoke(
+        cli.main,
+        [
+            "acme/widget",
+            "--performance",
+            "--performance-profile",
+            "chronicle-cinematic",
+            "--strict-performance",
+            "--save-beat-manifest",
+            str(tmp_path / "beats.json"),
+            "--save-performance-plan",
+            str(tmp_path / "plan.json"),
+            "--save-performance-report",
+            str(tmp_path / "report.json"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    options = captured["options"]
+    assert options.performance is True
+    assert options.performance_profile == "chronicle-cinematic"
+    assert options.strict_performance is True
+    assert options.save_beat_manifest == tmp_path / "beats.json"
+    assert options.save_performance_plan == tmp_path / "plan.json"
+    assert options.save_performance_report == tmp_path / "report.json"
+
+
 def test_cli_default_paths(monkeypatch):
     captured = {}
 

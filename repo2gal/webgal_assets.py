@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 from importlib import resources
@@ -18,11 +19,57 @@ _WEBGAL_DIRS = {
     "character": "figure",
     "bgm": "bgm",
 }
+_WEBGAL_STAGE_WIDTH = 2560
+_WEBGAL_STAGE_HEIGHT = 1440
+_FIGURE_TOP_MARGIN = 24
 
 
 def target_filename(asset: Asset) -> str:
     """逻辑 ID 全量参与文件名，避免不同 ID 的末段发生碰撞。"""
     return f"{asset.logical_id.replace('.', '-')}{asset.source_file.suffix.lower()}"
+
+
+def figure_framing_transform(asset: Asset) -> dict[str, dict[str, float]] | None:
+    """把引擎无关的归一化 framing 标注编译为 WebGAL 4.6.2 Pixi transform。"""
+    framing = asset.metadata.get("framing")
+    if not isinstance(framing, dict) or framing.get("mode") != "upper-body":
+        return None
+    width = float(asset.metadata["width"])
+    height = float(asset.metadata["height"])
+    base_scale = min(_WEBGAL_STAGE_WIDTH / width, _WEBGAL_STAGE_HEIGHT / height)
+    fitted_height = height * base_scale
+    base_y = (
+        _WEBGAL_STAGE_HEIGHT / 2
+        if fitted_height >= _WEBGAL_STAGE_HEIGHT
+        else _WEBGAL_STAGE_HEIGHT - fitted_height / 2
+    )
+    top = float(framing["top"]) * height
+    bottom = float(framing["bottom"]) * height
+    center_x = float(framing["centerX"]) * width
+    scale = (_WEBGAL_STAGE_HEIGHT - 2 * _FIGURE_TOP_MARGIN) / (base_scale * (bottom - top))
+    position_x = -scale * base_scale * (center_x - width / 2)
+    position_y = (
+        _FIGURE_TOP_MARGIN
+        - base_y
+        + scale * base_scale * (height / 2 - top)
+    )
+
+    def rounded(value: float) -> float:
+        result = round(value, 3)
+        return 0.0 if result == -0.0 else result
+
+    return {
+        "position": {"x": rounded(position_x), "y": rounded(position_y)},
+        "scale": {"x": rounded(scale), "y": rounded(scale)},
+    }
+
+
+def figure_base_transform(asset: Asset) -> dict[str, dict[str, float]]:
+    """所有 Asset Pack 角色都使用中心基准；无 framing 时退回 WebGAL contain 比例。"""
+    return figure_framing_transform(asset) or {
+        "position": {"x": 0.0, "y": 0.0},
+        "scale": {"x": 1.0, "y": 1.0},
+    }
 
 
 def _target_map(pack: AssetPack) -> dict[str, dict[str, str]]:
@@ -62,7 +109,44 @@ def rewrite_script(script: str, pack: AssetPack) -> str:
                 continue
             raise PackageError(f"脚本包含未通过 validator 的素材引用：{command}:{reference.strip()}")
         suffix = f" -{args}" if marker else ""
-        out.append(f"{command}:{target}{suffix};")
+        framing_suffix = ""
+        if command == "changeFigure":
+            transform = figure_base_transform(pack.assets[reference.strip()])
+            arg_parts = args.split(" -") if marker else []
+            enter_motion = next(
+                (
+                    part.removeprefix("repo2galEnter=")
+                    for part in arg_parts
+                    if part.startswith("repo2galEnter=")
+                ),
+                None,
+            )
+            slot_offset = 0
+            if any(part in ("left", "left=true") for part in arg_parts):
+                slot_offset = -500
+            elif any(part in ("right", "right=true") for part in arg_parts):
+                slot_offset = 500
+            arg_parts = [
+                part
+                for part in arg_parts
+                if part not in ("left", "right")
+                and not part.startswith("left=")
+                and not part.startswith("right=")
+                and not part.startswith("transform=")
+                and not part.startswith("repo2galEnter=")
+            ]
+            transform["position"]["x"] = round(transform["position"]["x"] + slot_offset, 3)
+            if enter_motion in ("from-left", "from-right", "fade"):
+                transform["alpha"] = 0
+                if enter_motion == "from-left":
+                    transform["position"]["x"] -= 100
+                elif enter_motion == "from-right":
+                    transform["position"]["x"] += 100
+            framing_suffix = " -transform=" + json.dumps(
+                transform, ensure_ascii=False, separators=(",", ":")
+            )
+            suffix = "" if not arg_parts else " -" + " -".join(arg_parts)
+        out.append(f"{command}:{target}{framing_suffix}{suffix};")
     return "\n".join(out) + "\n"
 
 
