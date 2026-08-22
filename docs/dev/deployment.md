@@ -59,6 +59,10 @@ GitHub 数据访问使用 Actions 自动提供的 `github.token`，不要另建�
 `VERCEL_SCOPE=rhopapers-projects` 和 `VERCEL_PROJECT=repo2gal-demo` 是公开项目标识，已固定在
 workflow 中，不属于 secret。
 
+Workflow 在任何 GitHub 采集或 LLM 调用前执行 `vercel whoami`。无效、已撤销或无 team
+访问权的 token 会立即失败，避免浪费生成时间和模型费用。Token 必须由 Vercel Account
+Settings 的 Tokens 页面创建，并能访问 `rhopapers-projects`。
+
 ### 自动生成策略
 
 生产生成使用：

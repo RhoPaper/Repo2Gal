@@ -69,6 +69,11 @@ jobs:
         with:
           version: 10
 
+      - name: Validate Vercel token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: pnpm dlx vercel@59.3.0 whoami --token "$VERCEL_TOKEN"
+
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install --yes libmagic1
 
