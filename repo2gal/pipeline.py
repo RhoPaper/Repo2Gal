@@ -405,6 +405,14 @@ def run_pipeline(
         if performance_report is None:
             performance_report = PerformanceReport(story_hash=manifest.story_hash)
         log(performance_report.summary())
+        for finding in performance_report.findings:
+            if finding.get("kind") in ("error", "warn"):
+                location = ""
+                if finding.get("cueId"):
+                    location += f" cue={finding['cueId']}"
+                if finding.get("beatId"):
+                    location += f" beat={finding['beatId']}"
+                warn(f"动态演出{location}：{finding.get('message', '未知问题')}")
         if options.save_performance_report:
             _save_json(options.save_performance_report, performance_report.to_dict())
         if options.strict_performance and performance_report.degraded:

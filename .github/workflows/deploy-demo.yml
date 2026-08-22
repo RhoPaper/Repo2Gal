@@ -123,11 +123,12 @@ jobs:
         run: cp deploy/vercel.json output/Repo2Gal/vercel.json
 
       - name: Upload generation audit
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: repo2gal-demo-${{ env.DEPLOY_SHA }}
           retention-days: 30
-          if-no-files-found: error
+          if-no-files-found: warn
           path: |
             .repo2gal/audit/*.json
             output/Repo2Gal/game/scene/start.txt
