@@ -165,9 +165,35 @@ def test_missing_transition_phase_uses_deterministic_enter_default():
     )
     assert normalized["cues"][0]["actions"][0]["phase"] == "enter"
     assert any("缺少 phase" in finding["message"] for finding in report.findings)
-    assert report.degraded is True
+    assert report.degraded is False
     checked = validate_plan(normalized, manifest=manifest, asset_pack=PACK, profile="chronicle-subtle")
     assert checked.semantic_valid is True
+
+
+def test_missing_transition_duration_uses_safe_medium_default():
+    _, manifest = make_manifest()
+    plan = make_plan(
+        manifest,
+        cues=[{
+            "id": "cue000001",
+            "beatId": "b000001",
+            "anchor": "during",
+            "actions": [{
+                "kind": "screen.transition", "preset": "shockwaveIn", "phase": "enter"
+            }],
+        }],
+    )
+    report = PerformanceReport()
+    normalized = load_plan(
+        plan_json(plan),
+        report=report,
+        story_hash=manifest.story_hash,
+        scene_id="start",
+        profile="chronicle-subtle",
+    )
+    assert normalized["cues"][0]["actions"][0]["duration"] == "medium"
+    assert report.degraded is False
+    assert any("缺少 duration" in finding["message"] for finding in report.findings)
 
 
 @pytest.mark.parametrize(

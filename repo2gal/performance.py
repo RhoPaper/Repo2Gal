@@ -567,7 +567,14 @@ def load_plan(
                         cue_id=cue.get("id") if isinstance(cue.get("id"), str) else None,
                         beat_id=cue.get("beatId") if isinstance(cue.get("beatId"), str) else None,
                     )
-                    report.degraded = True
+                if "duration" not in action:
+                    action["duration"] = "medium"
+                    report.add(
+                        "warn",
+                        "screen.transition 缺少 duration，已使用默认值 medium",
+                        cue_id=cue.get("id") if isinstance(cue.get("id"), str) else None,
+                        beat_id=cue.get("beatId") if isinstance(cue.get("beatId"), str) else None,
+                    )
     validator = Draft202012Validator(_SCHEMA)
     errors = sorted(validator.iter_errors(plan), key=lambda error: tuple(str(p) for p in error.absolute_path))
     if errors:

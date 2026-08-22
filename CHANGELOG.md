@@ -17,7 +17,7 @@
   `--strict-performance` 沿用退出码 5；
 - 新增 `--save-beat-manifest`、`--save-performance-plan`、`--save-performance-report`，
   仅在指定时写出调试审计 JSON；
-- 新增离线 Performance Plan Schema、状态机和 WebGAL golden tests，离线测试扩充至 166 项。
+- 新增离线 Performance Plan Schema、状态机和 WebGAL golden tests，离线测试扩充至 167 项。
 - 修复真实模型遗漏 `screen.transition.phase` 导致整份计划 fallback 的问题，无歧义时默认补
   `enter`；模型复制错误的运行元数据由 Python 绑定；
 - 新增角色归一化 framing，内置全身角色图非破坏性编译为居中半身 WebGAL transform，

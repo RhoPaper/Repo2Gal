@@ -408,7 +408,7 @@ def test_no_dialogue_plan_uses_unanchored_scene_effect_fallback(tmp_path):
     assert artifacts.performance_report.compiled_command_count == 2
 
 
-def test_repaired_transition_compiles_normally_but_strict_performance_rejects(tmp_path):
+def test_repaired_transition_compiles_and_strict_performance_accepts_safe_defaults(tmp_path):
     script = tmp_path / "story.txt"
     transition_story = "changeBg:bg.webp;\nsay:这是现成剧本。;\nend;\n"
     script.write_text(transition_story, encoding="utf-8")
@@ -443,11 +443,16 @@ def test_repaired_transition_compiles_normally_but_strict_performance_rejects(tm
         package_fn=lambda clean, output, **kw: output,
     )
     assert "changeBg:bg.webp -enter=shockwaveIn -enterDuration=500;" in artifacts.clean
-    assert artifacts.performance_report.degraded is True
+    assert artifacts.performance_report.degraded is False
 
     strict_options = make_options(tmp_path, script=script, performance=True, strict_performance=True)
-    with pytest.raises(ValidationFailed, match="strict-performance"):
-        run(tmp_path, options=strict_options, llm=RepairedPerformanceLLM())
+    strict_artifacts = run(
+        tmp_path,
+        options=strict_options,
+        llm=RepairedPerformanceLLM(),
+        package_fn=lambda clean, output, **kw: output,
+    )
+    assert strict_artifacts.performance_report.semantic_valid is True
 
 
 def test_performance_llm_failure_falls_back_but_strict_performance_fails(tmp_path):
