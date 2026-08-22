@@ -196,6 +196,32 @@ def test_missing_transition_duration_uses_safe_medium_default():
     assert any("缺少 duration" in finding["message"] for finding in report.findings)
 
 
+def test_missing_transition_preset_is_derived_from_phase():
+    _, manifest = make_manifest()
+    plan = make_plan(
+        manifest,
+        cues=[{
+            "id": "cue000001",
+            "beatId": "b000001",
+            "anchor": "during",
+            "actions": [{
+                "kind": "screen.transition", "phase": "exit", "duration": "short"
+            }],
+        }],
+    )
+    report = PerformanceReport()
+    normalized = load_plan(
+        plan_json(plan),
+        report=report,
+        story_hash=manifest.story_hash,
+        scene_id="start",
+        profile="chronicle-subtle",
+    )
+    assert normalized["cues"][0]["actions"][0]["preset"] == "shockwaveOut"
+    assert report.degraded is False
+    assert any("缺少 preset" in finding["message"] for finding in report.findings)
+
+
 @pytest.mark.parametrize(
     "broken",
     [

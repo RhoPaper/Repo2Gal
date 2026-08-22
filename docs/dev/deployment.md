@@ -80,9 +80,10 @@ Workflow 缓存固定 WebGAL 模板和 `python-github-backup` 原始层，但不
 每次成功生成会保留 30 天 GitHub Artifact：Beat Manifest、Performance Plan、Performance
 Report、最终 `start.txt` 和第三方声明。
 
-Performance Plan 中 `screen.transition` 的 `phase` 和 `duration` 允许模型省略；普通代码会按
-preset 推导 phase，并使用 `medium` 默认时长。这类机械补全只产生 warning，不会让严格部署
-失败；未知能力、无目标背景和角色状态冲突仍会阻止生产部署。
+Performance Plan 中 `screen.transition` 的 `phase`、`preset` 和 `duration` 允许模型省略；
+普通代码会在 `enter ↔ shockwaveIn`、`exit ↔ shockwaveOut` 之间双向推导，并使用 `medium`
+默认时长。这类机械补全只产生 warning，不会让严格部署失败；冲突组合、未知能力、无目标
+背景和角色状态冲突仍会阻止生产部署。
 
 `/demo` 路径由 Vercel 路由配置实现：游戏静态文件部署在站点根目录，
 `vercel.json` 把 `/demo` 重写到根文件，因此**产物内部无需改动**。

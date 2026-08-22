@@ -554,9 +554,10 @@ LLM 2 的 system prompt 必须明确：
 - 如果兼容端点支持 JSON Schema response format，使用它；
 - 即使端点声称返回 Structured Output，也必须本地运行 Schema 和语义校验；
 - v1 不做无限修复循环；计划无效时采用最低确定性演出 fallback；
-- `screen.transition.phase` 和 `duration` 是可省略的机械字段：Python 分别按 preset 推导
-  `enter/exit`，并使用 `medium` 默认时长。两者只记录 warning，不标记 degraded；未知 preset、
-  无背景或状态冲突仍由 `--strict-performance` 拒绝；
+- `screen.transition.phase`、`preset` 和 `duration` 是可省略的机械字段：Python 在
+  `enter ↔ shockwaveIn`、`exit ↔ shockwaveOut` 之间双向推导，并使用 `medium` 默认时长。
+  补全只记录 warning，不标记 degraded；冲突组合、未知 preset、无背景或状态冲突仍由
+  `--strict-performance` 拒绝；
 - 后续若增加一次修复调用，也必须是固定上限的普通重试，不引入 Agent loop。
 
 ## 11. 失败策略与报告

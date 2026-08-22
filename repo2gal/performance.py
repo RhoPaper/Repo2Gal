@@ -567,6 +567,14 @@ def load_plan(
                         cue_id=cue.get("id") if isinstance(cue.get("id"), str) else None,
                         beat_id=cue.get("beatId") if isinstance(cue.get("beatId"), str) else None,
                     )
+                if "preset" not in action:
+                    action["preset"] = "shockwaveOut" if action["phase"] == "exit" else "shockwaveIn"
+                    report.add(
+                        "warn",
+                        f"screen.transition 缺少 preset，已根据 phase 使用 {action['preset']}",
+                        cue_id=cue.get("id") if isinstance(cue.get("id"), str) else None,
+                        beat_id=cue.get("beatId") if isinstance(cue.get("beatId"), str) else None,
+                    )
                 if "duration" not in action:
                     action["duration"] = "medium"
                     report.add(
