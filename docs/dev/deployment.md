@@ -185,31 +185,49 @@ curl -sI https://repo2gal.rhopaper.top/demo/game/scene/start.txt   # 期望 200
 
 ## 附：GitHub Pages 部署（推荐给其它项目开发者）
 
-把自己仓库的演示挂出去时，推荐用 `deploy-pages.yml`：不需要 Vercel 项目或自定义域名，
-凭据也只有 `REPO2GAL_API_KEY`。它复用 `deploy-demo.yml` 的生成参数（内置 CC0 包、
+把自己仓库的演示挂出去时用 `deploy-pages.yml`：不需要 Vercel 项目或自定义域名，
+凭据只有 `REPO2GAL_API_KEY`。它复用 `deploy-demo.yml` 的生成参数（内置 CC0 包、
 `--strict`、审计 artifact），只替换发布环节，也不读取 `VERCEL_TOKEN`。
+
+这条流水线不含项目特化信息：目标仓库、剧本模式、生成参数、采集凭据都从仓库
+variables / secrets 读取。部署自己的项目时在 `Settings -> Secrets and variables
+-> Actions` 里配置即可，不需要改动 workflow 文件。
 
 启用步骤：
 
 1. 仓库 `Settings -> Pages` 把 Source 设为 **GitHub Actions**；
-2. 至少配置 `REPO2GAL_API_KEY` secret；需要换端点或模型时再配置
-   `REPO2GAL_BASE_URL` 与 `REPO2GAL_MODEL` variables；
-3. 在 `main` 手动触发一次。
+2. 至少配置 `REPO2GAL_API_KEY` secret（LLM）；
+3. 要生成的是别的仓库时，再配置 `REPO2GAL_TARGET_REPO` 与 `REPO2GAL_SOURCE_TOKEN`
+   （一个能读到目标仓库的只读 PAT，`github.token` 只覆盖当前仓库）；
+4. 在 `main` 触发一次。
 
-默认只手动触发。上游 `main` 的 CI 成功后已经由 `deploy-demo.yml` 生成并部署过一次，
-两条流水线都挂 `workflow_run` 会让每次 push 产生两次 LLM 生成。要让 Pages 站点也随
-`main` 自动更新，把 `deploy-pages.yml` 顶部被注释的 `workflow_run` 触发器解开即可。
+### 可配置项
+
+| 配置 | 类型 | 缺省 | 说明 |
+|---|---|---|---|
+| `REPO2GAL_TARGET_REPO` | variable | 当前仓库 | 要生成剧本的目标仓库 `owner/repo` |
+| `REPO2GAL_MODE` | variable | `chronicle` | `chronicle` / `overview` / `quickstart` |
+| `REPO2GAL_PROFILE` | variable | `chronicle-subtle` | 演出 profile（`--profile`） |
+| `REPO2GAL_STRICT` | variable | 开启 | 设为 `false` 关闭 `--strict` |
+| `REPO2GAL_AUTO_UPDATE` | variable | 关闭 | 设为 `true` 后按目标仓库推进每天自动更新 |
+| `REPO2GAL_TIMEOUT_MINUTES` | variable | `60` | 生成超时分钟数 |
+| `REPO2GAL_BASE_URL` | variable | `https://api.deepseek.com/v1` | OpenAI 兼容端点 |
+| `REPO2GAL_MODEL` | variable | `deepseek-v4-pro` | 模型名 |
+| `REPO2GAL_API_KEY` | secret | 必填 | LLM API Key |
+| `REPO2GAL_SOURCE_TOKEN` | secret | `github.token` | 跨仓库采集用的只读 PAT |
+
+`workflow_dispatch` 保留 `repo` 与 `mode` 两个一次性参数，用于临时指定别的目标，
+优先级高于对应的 variable。
+
+### 自动更新
+
+默认只手动触发。把 `REPO2GAL_AUTO_UPDATE` 设为 `true` 后，流水线每天检查一次目标仓库
+默认分支的 head：与上次生成记录的 revision 不同才重新生成，相同则只跑一个几秒的
+`plan` job 直接结束。cron 固定为每天一次，GitHub 不支持变量驱动的 cron。
 
 产物以站点根目录发布，站内资源本来就是相对路径，因此不需要 Vercel 那套 `/demo`
-路由。`workflow_dispatch` 的可选参数：
-
-| 参数 | 默认 | 说明 |
-|---|---|---|
-| `repo` | 本仓库 | 要生成剧本的目标仓库（`owner/repo`） |
-| `mode` | `chronicle` | `chronicle` / `overview` / `quickstart` |
-
-站点地址为 `https://<owner>.github.io/<repo>/`。两条部署流水线互不影响，可以只启用
-其中一条，也可以同时启用作为双保险。
+路由。站点地址为 `https://<owner>.github.io/<repo>/`。把 `REPO2GAL_TARGET_REPO` 指向
+别的仓库后，站点仍发布在当前仓库的 Pages 下。
 
 ## 注意事项
 

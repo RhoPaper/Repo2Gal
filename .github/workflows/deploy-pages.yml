@@ -1,24 +1,32 @@
 name: Deploy Demo to GitHub Pages
 
-# Optional second home for the dogfooding demo: same generation pipeline as
-# deploy-demo.yml, published as a static GitHub Pages site instead of Vercel.
-# Useful when no Vercel project or custom domain is available. Requires the
-# repository Pages source to be set to "GitHub Actions".
+# 通用 GitHub Pages 部署：把任意仓库生成成编年史静态站点并发布到 Pages。
+# 默认手动触发；配置仓库 variables 后可按目标仓库的推进定时自动更新。
 #
-# Manual by default; see the commented workflow_run trigger below for
-# continuous deployment on main.
+# 目标仓库 / 剧本模式 / 生成参数 / 采集凭据都从仓库 variables 与 secrets 读取，
+# 换目标时无需改动本文件。未配置任何 variables 时，行为与手动触发的原有 Pages
+# 部署完全一致（本仓库、chronicle、chronicle-subtle、严格校验）。
+#
+#   vars.REPO2GAL_TARGET_REPO       目标仓库 owner/repo（缺省为当前仓库）
+#   vars.REPO2GAL_MODE              剧本模式 chronicle/overview/quickstart（缺省 chronicle）
+#   vars.REPO2GAL_PROFILE           演出 profile（缺省 chronicle-subtle）
+#   vars.REPO2GAL_STRICT            'false' 关闭严格校验（缺省开启）
+#   vars.REPO2GAL_AUTO_UPDATE       'true' 时启用定时自动更新（缺省关闭）
+#   vars.REPO2GAL_TIMEOUT_MINUTES   生成超时分钟数（缺省 60）
+#   vars.REPO2GAL_BASE_URL          OpenAI 兼容端点（缺省 https://api.deepseek.com/v1）
+#   vars.REPO2GAL_MODEL             模型名（缺省 deepseek-v4-pro）
+#   secrets.REPO2GAL_API_KEY        LLM API Key
+#   secrets.REPO2GAL_SOURCE_TOKEN   跨仓库采集用的只读 PAT；缺省回落到 github.token
+#                                   （github.token 只能访问本仓库，跨仓库采集必须显式提供）
+#
+# 启用步骤：仓库 Settings -> Pages 把 Source 设为 GitHub Actions；至少配置
+# REPO2GAL_API_KEY；跨仓库部署时再配置 REPO2GAL_SOURCE_TOKEN 与 REPO2GAL_TARGET_REPO。
 
 on:
-  # 默认只手动触发：上游 main 的 CI 成功后已经由 deploy-demo.yml 部署一次，
-  # 两条流水线都挂 workflow_run 会让每次 push 产生两次 LLM 生成。想让 Pages
-  # 站点也随 main 自动更新时，解开下面的注释：
-  # workflow_run:
-  #   workflows: [CI]
-  #   types: [completed]
   workflow_dispatch:
     inputs:
       repo:
-        description: "Repository to chronicle (owner/repo); empty means this repository"
+        description: "Repository to chronicle (owner/repo); empty means vars.REPO2GAL_TARGET_REPO"
         required: false
         default: ""
       mode:
@@ -29,6 +37,9 @@ on:
           - overview
           - quickstart
         default: chronicle
+  schedule:
+    # 定时兜底：是否真正生成由 vars.REPO2GAL_AUTO_UPDATE 决定，未开启时直接跳过。
+    - cron: "7 20 * * *"
 
 permissions:
   contents: read
@@ -38,10 +49,81 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  plan:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    outputs:
+      target: ${{ steps.decide.outputs.target }}
+      mode: ${{ steps.decide.outputs.mode }}
+      profile: ${{ steps.decide.outputs.profile }}
+      strict: ${{ steps.decide.outputs.strict }}
+      should_run: ${{ steps.decide.outputs.should_run }}
+      revision: ${{ steps.decide.outputs.revision }}
+    steps:
+      - name: Restore recorded revision
+        uses: actions/cache/restore@v4
+        with:
+          path: .repo2gal-state
+          key: repo2gal-pages-state-${{ github.run_id }}
+          restore-keys: repo2gal-pages-state-
+
+      - name: Decide whether to generate
+        id: decide
+        env:
+          GH_TOKEN: ${{ secrets.REPO2GAL_SOURCE_TOKEN || github.token }}
+          TARGET_REPO: ${{ inputs.repo || vars.REPO2GAL_TARGET_REPO || github.repository }}
+          MODE: ${{ inputs.mode || vars.REPO2GAL_MODE || 'chronicle' }}
+          AUTO_UPDATE: ${{ vars.REPO2GAL_AUTO_UPDATE }}
+        run: |
+          set -eu
+          echo "target=$TARGET_REPO" >> "$GITHUB_OUTPUT"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "profile=${{ vars.REPO2GAL_PROFILE || 'chronicle-subtle' }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ vars.REPO2GAL_STRICT }}" = "false" ]; then
+            echo "strict=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "strict=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          scheduled=0
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            scheduled=1
+          fi
+          if [ "$scheduled" = 1 ] && [ "$AUTO_UPDATE" != "true" ]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "未开启定时自动更新（vars.REPO2GAL_AUTO_UPDATE != true），跳过"
+            exit 0
+          fi
+
+          # 无论手动还是定时，都记录目标仓库当前 head，供下次定时比较。
+          branch=$(gh api "repos/$TARGET_REPO" --jq .default_branch 2>/dev/null || true)
+          latest=""
+          if [ -n "$branch" ]; then
+            latest=$(gh api "repos/$TARGET_REPO/git/ref/heads/$branch" --jq .object.sha 2>/dev/null || true)
+          fi
+          if [ -n "$latest" ]; then
+            echo "revision=$latest" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "$scheduled" = 0 ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          recorded=$(cat .repo2gal-state/last-commit.txt 2>/dev/null | tr -d '\r\n' || true)
+          if [ -n "$latest" ] && [ -n "$recorded" ] && [ "$latest" = "$recorded" ]; then
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "$TARGET_REPO 仍是 ${latest:0:8}，跳过"
+          else
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "$TARGET_REPO 有更新：${recorded:0:8} -> ${latest:0:8}"
+          fi
+
+  deploy:
+    needs: plan
+    if: needs.plan.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(vars.REPO2GAL_TIMEOUT_MINUTES || '60') }}
     permissions:
       contents: read
       pages: write
@@ -51,8 +133,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     env:
       DEPLOY_SHA: ${{ github.sha }}
-      TARGET_REPO: ${{ inputs.repo || github.repository }}
-      MODE: ${{ inputs.mode || 'chronicle' }}
+      TARGET_REPO: ${{ needs.plan.outputs.target }}
+      MODE: ${{ needs.plan.outputs.mode }}
+      PROFILE: ${{ needs.plan.outputs.profile }}
+      STRICT: ${{ needs.plan.outputs.strict }}
 
     steps:
       - name: Checkout successful commit
@@ -94,23 +178,25 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .repo2gal/backups
-          key: ${{ runner.os }}-repo2gal-pages-backup-${{ env.DEPLOY_SHA }}
+          key: ${{ runner.os }}-repo2gal-backup-${{ github.run_id }}
           restore-keys: |
-            ${{ runner.os }}-repo2gal-pages-backup-
+            ${{ runner.os }}-repo2gal-backup-
 
-      - name: Generate strict dogfooding demo
+      - name: Generate chronicle
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ secrets.REPO2GAL_SOURCE_TOKEN || github.token }}
           REPO2GAL_API_KEY: ${{ secrets.REPO2GAL_API_KEY }}
           REPO2GAL_BASE_URL: ${{ vars.REPO2GAL_BASE_URL }}
           REPO2GAL_MODEL: ${{ vars.REPO2GAL_MODEL }}
         run: |
+          strict=""
+          [ "$STRICT" = "true" ] && strict="--strict"
           .venv/bin/repo2gal "$TARGET_REPO" \
             --mode "$MODE" \
             --asset-pack builtin:cc0-chronicle \
             --public-assets \
-            --profile chronicle-subtle \
-            --strict \
+            --profile "$PROFILE" \
+            $strict \
             --save-stage-outputs .repo2gal/audit/stages \
             --output output/demo
 
@@ -120,19 +206,34 @@ jobs:
           test -s output/demo/game/scene/start.txt
           test -s .repo2gal/audit/stages/03-director-report.json
           grep -q "end;" output/demo/game/scene/start.txt
-          grep -q '"degraded": false' .repo2gal/audit/stages/03-director-report.json
+          if [ "$STRICT" = "true" ]; then
+            grep -q '"degraded": false' .repo2gal/audit/stages/03-director-report.json
+          fi
 
       - name: Upload generation audit
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: repo2gal-pages-${{ env.DEPLOY_SHA }}
+          name: repo2gal-pages-${{ github.run_id }}
           retention-days: 30
           if-no-files-found: warn
           path: |
             .repo2gal/audit/**
             output/demo/game/scene/start.txt
             output/demo/THIRD_PARTY_NOTICES.md
+
+      - name: Record generated revision
+        run: |
+          if [ -n "${{ needs.plan.outputs.revision }}" ]; then
+            mkdir -p .repo2gal-state
+            printf '%s\n' "${{ needs.plan.outputs.revision }}" > .repo2gal-state/last-commit.txt
+          fi
+
+      - name: Save recorded revision
+        uses: actions/cache/save@v4
+        with:
+          path: .repo2gal-state
+          key: repo2gal-pages-state-${{ github.run_id }}
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
