@@ -17,12 +17,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.check.outputs.enabled }}
+    steps:
+      - name: Check Vercel credentials
+        id: check
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -n "$VERCEL_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "未配置 VERCEL_TOKEN：跳过 Vercel 生产部署" >&2
+          fi
+
   deploy:
+    needs: guard
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.head_branch == 'main')
+      needs.guard.outputs.enabled == 'true' &&
+      (
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+        (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main')
+      )
     runs-on: ubuntu-latest
     # 生成约 30 分钟（真实采集 + 5 次 LLM 调用），线上校验最多再等 10 分钟。
     timeout-minutes: 60
