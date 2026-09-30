@@ -45,7 +45,9 @@ Cloudflare DNS：repo2gal.rhopaper.top CNAME cname-china.vercel-dns.com（仅 DN
 标准路径是每次 push 到 `main` 部署一次最终 commit。一次 push 包含多个 commit 时不会逐个
 重复调用 LLM；快速连续 push 会由 concurrency 取消旧部署，只保留最新 commit。
 
-PR 不会获得生产 secrets，也不会部署。Deploy job 使用 GitHub `production` environment，
+PR 不会获得生产 secrets，也不会部署：`guard` 与 `deploy` 带同一套事件条件，只有 `main`
+的 push 触发的 CI 成功、或 `main` 上手动触发时才运行，其余（含 PR 触发的 CI 完成）整个 run
+直接跳过，连读凭据的 job 都不会起。Deploy job 使用 GitHub `production` environment，
 可以在仓库 Settings 中为该 environment 增加 required reviewers。
 
 `deploy-pages.yml` 与 Vercel 完全分开：只用 `REPO2GAL_API_KEY`，发布到 GitHub Pages，
@@ -53,13 +55,17 @@ PR 不会获得生产 secrets，也不会部署。Deploy job 使用 GitHub `prod
 
 ### 必需 Secrets
 
-在 GitHub 仓库 `Settings -> Secrets and variables -> Actions` 中配置 repository secret，
-或在 `production` environment 中配置同名 environment secret：
+在 GitHub 仓库 `Settings -> Secrets and variables -> Actions` 中配置 **repository secret**：
 
 | Secret | 用途 |
 |---|---|
 | `REPO2GAL_API_KEY` | 三轮 LLM（创作草稿、演出批注、导演 JSON） |
 | `VERCEL_TOKEN` | 链接并部署 `rhopapers-projects/repo2gal-demo` |
+
+`VERCEL_TOKEN` 必须是仓库级 secret：`deploy-demo.yml` 的 `guard` job 在 `production`
+environment 之外读取它来判断是否需要 Vercel 部署，配成 environment secret 会读不到，
+部署被静默跳过。`REPO2GAL_API_KEY` 同样建议配在仓库级——Pages 流水线不在任何 environment
+里运行，跨仓库采集用的 `REPO2GAL_SOURCE_TOKEN` 也是。
 
 GitHub 数据访问使用 Actions 自动提供的 `github.token`，不要另建长期 GitHub PAT。Workflow
 只授予 `contents/issues/pull-requests/discussions: read`。该 `ghs_` installation token 会通过

@@ -18,6 +18,14 @@ concurrency:
 
 jobs:
   guard:
+    # 与 deploy 同一套事件条件：只有「main 的 push 触发的 CI 成功」或「main 手动触发」
+    # 才真正执行。否则每个 PR 的 CI 完成都会跑这个 job，而它带着 VERCEL_TOKEN——
+    # 那既产生噪音，也让「PR 不接触生产 secrets」不再成立。
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}

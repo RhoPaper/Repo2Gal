@@ -230,6 +230,9 @@ jobs:
           fi
 
       - name: Save recorded revision
+        # 只有真录到了 revision 才有目录可存；否则 actions/cache/save 会因路径不存在
+        # 失败，而它排在发布步骤之前，会把已经生成好的产物一起拖住不发。
+        if: needs.plan.outputs.revision != ''
         uses: actions/cache/save@v4
         with:
           path: .repo2gal-state
