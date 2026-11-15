@@ -1,0 +1,12 @@
+[project]
+name = "widget"
+version = "1.2.0"
+description = "回归测试用示例小工具"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+widget = "widget.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

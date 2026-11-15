@@ -92,10 +92,11 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] 统一错误体系与退出码契约、错误信息脱敏
 - [x] 显式管线（pipeline）与可注入依赖，全流程可离线端到端测试
-- [x] 离线测试套件（258 项）
+- [x] 离线测试套件（261 项）
 - [x] 文档体系：用户指南、开发规约、Agent 指南、部署文档
 - [x] GitHub Actions 离线 CI 与 `main` 成功后自动生成/部署演示（需仓库 secrets）
-- [ ] python-github-backup 真实 fixture 回归样本
+- [x] python-github-backup 落盘结构 fixture 回归样本（三模式共用，含 Issue labels、
+      comment_data/reply_data、review_data 与 CI 工作流目录）
 - [ ] 真实 LLM golden cases 评测集
 
 ## 安装

@@ -1,0 +1,39 @@
+{
+  "id": 1001,
+  "node_id": "R_kgDOExampleWidget",
+  "name": "widget",
+  "full_name": "acme/widget",
+  "private": false,
+  "owner": {
+    "login": "acme",
+    "id": 1,
+    "node_id": "O_kgDOExampleAcme",
+    "type": "Organization"
+  },
+  "html_url": "https://github.com/acme/widget",
+  "description": "一个用于回归测试的示例小工具",
+  "fork": false,
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-03-01T00:00:00Z",
+  "pushed_at": "2026-03-01T00:00:00Z",
+  "homepage": null,
+  "size": 128,
+  "stargazers_count": 42,
+  "watchers_count": 42,
+  "language": "Python",
+  "has_issues": true,
+  "has_discussions": true,
+  "has_wiki": true,
+  "forks_count": 3,
+  "open_issues_count": 2,
+  "subscribers_count": 5,
+  "default_branch": "main",
+  "topics": ["documentation", "example"],
+  "license": {
+    "key": "mit",
+    "name": "MIT License",
+    "spdx_id": "MIT",
+    "url": null,
+    "node_id": "MDc6TGljZW5zZTEz"
+  }
+}

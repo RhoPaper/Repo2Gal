@@ -1,0 +1,96 @@
+{
+  "id": 10002,
+  "node_id": "I_kwDOExampleWidget2",
+  "number": 2,
+  "title": "快速开始缺少测试与安装说明",
+  "user": {
+    "login": "octo-doc",
+    "id": 12,
+    "type": "User"
+  },
+  "labels": [
+    {
+      "id": 101,
+      "node_id": "MDU6TGFiZWwxMDE=",
+      "url": "https://api.github.com/repos/acme/widget/labels/good%20first%20issue",
+      "name": "good first issue",
+      "color": "7057ff",
+      "default": true,
+      "description": "Good for newcomers"
+    },
+    {
+      "id": 102,
+      "node_id": "MDU6TGFiZWwxMDI=",
+      "url": "https://api.github.com/repos/acme/widget/labels/documentation",
+      "name": "documentation",
+      "color": "0075ca",
+      "default": false,
+      "description": "Improvements or additions to documentation"
+    }
+  ],
+  "state": "open",
+  "state_reason": null,
+  "locked": false,
+  "assignee": null,
+  "assignees": [],
+  "milestone": {
+    "id": 2,
+    "node_id": "MI_kwDOExampleWidget2",
+    "number": 2,
+    "title": "v1.3",
+    "description": "",
+    "state": "open",
+    "open_issues": 2,
+    "closed_issues": 0,
+    "created_at": "2026-01-15T00:00:00Z",
+    "updated_at": "2026-02-01T00:00:00Z",
+    "closed_at": null,
+    "due_on": null
+  },
+  "comments": 2,
+  "created_at": "2026-02-01T09:00:00Z",
+  "updated_at": "2026-02-03T10:00:00Z",
+  "closed_at": null,
+  "author_association": "CONTRIBUTOR",
+  "body": "README 的快速开始只写了 clone，没有说明如何安装开发依赖、如何运行测试。",
+  "comments_url": "https://api.github.com/repos/acme/widget/issues/2/comments",
+  "html_url": "https://github.com/acme/widget/issues/2",
+  "comment_data": [
+    {
+      "id": 9001,
+      "url": "https://api.github.com/repos/acme/widget/issues/comments/9001",
+      "user": {
+        "login": "octo-maintainer",
+        "id": 21,
+        "type": "User"
+      },
+      "created_at": "2026-02-02T08:00:00Z",
+      "author_association": "OWNER",
+      "body": "同意，欢迎补一段 `pytest tests/ -q` 的用法。"
+    },
+    {
+      "id": 9002,
+      "url": "https://api.github.com/repos/acme/widget/issues/comments/9002",
+      "user": {
+        "login": "octo-doc",
+        "id": 12,
+        "type": "User"
+      },
+      "created_at": "2026-02-03T10:00:00Z",
+      "author_association": "CONTRIBUTOR",
+      "body": "我可以来改文档。",
+      "reply_data": [
+        {
+          "id": 9003,
+          "user": {
+            "login": "octo-maintainer",
+            "id": 21,
+            "type": "User"
+          },
+          "created_at": "2026-02-03T11:00:00Z",
+          "body": "太好了，记得保持测试离线。"
+        }
+      ]
+    }
+  ]
+}

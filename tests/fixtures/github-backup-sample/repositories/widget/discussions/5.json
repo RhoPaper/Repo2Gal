@@ -1,0 +1,48 @@
+{
+  "id": "D_kwDOExampleWidget5",
+  "number": 5,
+  "title": "是否应该支持配置文件？",
+  "author": {
+    "login": "octo-asker",
+    "id": 41,
+    "type": "User"
+  },
+  "authorAssociation": "NONE",
+  "body": "命令行参数已经很多了，考虑加一个 `widget.toml` 吗？",
+  "bodyText": "命令行参数已经很多了，考虑加一个 widget.toml 吗？",
+  "createdAt": "2026-02-15T10:00:00Z",
+  "updatedAt": "2026-02-16T10:00:00Z",
+  "deletedAt": null,
+  "closed": false,
+  "closedAt": null,
+  "stateReason": null,
+  "isAnswered": false,
+  "answerChosenAt": null,
+  "comment_count": 1,
+  "upvoteCount": 4,
+  "category": {
+    "id": "DIC_kwDOExampleCat1",
+    "name": "Ideas",
+    "emoji": "💡",
+    "description": "Share ideas for new features"
+  },
+  "labels": {
+    "nodes": []
+  },
+  "url": "https://github.com/acme/widget/discussions/5",
+  "resourcePath": "/acme/widget/discussions/5",
+  "comment_data": [
+    {
+      "id": "DC_kwDOExampleC1",
+      "author": {
+        "login": "octo-maintainer",
+        "id": 21,
+        "type": "User"
+      },
+      "createdAt": "2026-02-16T10:00:00Z",
+      "authorAssociation": "OWNER",
+      "isAnswer": false,
+      "body": "先记下来，等 v2 再评估配置文件格式。"
+    }
+  ]
+}

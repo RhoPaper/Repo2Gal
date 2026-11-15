@@ -1,0 +1,18 @@
+{
+  "id": 7001,
+  "node_id": "RE_kwDOExampleWidget7",
+  "tag_name": "v1.2.0",
+  "name": "v1.2.0",
+  "draft": false,
+  "prerelease": false,
+  "created_at": "2026-01-21T00:00:00Z",
+  "published_at": "2026-01-21T00:00:00Z",
+  "author": {
+    "login": "octo-maintainer",
+    "id": 21,
+    "type": "User"
+  },
+  "body": "修复 CLI 空参数崩溃，新增 `--verbose`。",
+  "html_url": "https://github.com/acme/widget/releases/tag/v1.2.0",
+  "assets": []
+}

@@ -1,0 +1,18 @@
+{
+  "id": 7002,
+  "node_id": "RE_kwDOExampleWidget8",
+  "tag_name": "v1.3.0",
+  "name": "v1.3.0（草稿）",
+  "draft": true,
+  "prerelease": false,
+  "created_at": "2026-02-20T00:00:00Z",
+  "published_at": null,
+  "author": {
+    "login": "octo-maintainer",
+    "id": 21,
+    "type": "User"
+  },
+  "body": "尚未发布的草稿，不应进入上下文。",
+  "html_url": "https://github.com/acme/widget/releases/tag/v1.3.0",
+  "assets": []
+}

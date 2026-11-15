@@ -1,0 +1,37 @@
+{
+  "id": 10003,
+  "node_id": "I_kwDOExampleWidget3",
+  "number": 3,
+  "title": "为安装文档补充虚拟环境说明",
+  "user": {
+    "login": "octo-newcomer",
+    "id": 13,
+    "type": "User"
+  },
+  "labels": [
+    {
+      "id": 103,
+      "node_id": "MDU6TGFiZWwxMDM=",
+      "url": "https://api.github.com/repos/acme/widget/labels/beginner",
+      "name": "beginner",
+      "color": "c5def5",
+      "default": false,
+      "description": "Newcomer friendly"
+    }
+  ],
+  "state": "open",
+  "state_reason": null,
+  "locked": false,
+  "assignee": null,
+  "assignees": [],
+  "milestone": null,
+  "comments": 0,
+  "created_at": "2026-02-10T07:00:00Z",
+  "updated_at": "2026-02-10T07:00:00Z",
+  "closed_at": null,
+  "author_association": "NONE",
+  "body": "安装文档没有提醒先激活虚拟环境，直接装进系统 Python 会污染环境。",
+  "comments_url": "https://api.github.com/repos/acme/widget/issues/3/comments",
+  "html_url": "https://github.com/acme/widget/issues/3",
+  "comment_data": []
+}

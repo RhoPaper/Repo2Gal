@@ -404,7 +404,8 @@ evidence 保存在 `third_party/asset-packs/`。
   `resolve_model_chain`）；`--mode` 读取 `REPO2GAL_MODE`；增量备份补
   `--incremental-by-files`；GitHub Pages 流水线参数化（仓库 variables/secrets 驱动，
   可选定时更新），Vercel 仍是本仓库生产路径；validator 放行 `changeFigure:none`
-  保留取值，修复角色退场被误降级；导演 prompt 与 `jump` 形状修复
+  保留取值，修复角色退场被误降级；导演 prompt 与 `jump` 形状修复；新增
+  `tests/fixtures/github-backup-sample/` 落盘结构回归样本
 
 `v0.9.0` 结论：Chronicle、Overview、Quick Start、单本地素材包闭环和动态演出均已实现；
 多场景拆分、RP 圆桌模式与 Git/AI Provider 仍是计划，不得写成现有能力。
@@ -418,11 +419,10 @@ evidence 保存在 `third_party/asset-packs/`。
 
 推荐下一步：
 
-1. 给备份解析器增加真实 `python-github-backup` fixture 回归样本（含真实 Issue labels
-   与工作流文件的目录结构）。
-2. 用真实 LLM 和 CC0 示例包端到端验证三轮流程（创作/批注/导演 JSON 的质量与重试率），
+1. 用真实 LLM 和 CC0 示例包端到端验证三轮流程（创作/批注/导演 JSON 的质量与重试率），
    建立固定仓库 golden cases；Quick Start 另需验证起步任务是否被如实引用、无标签仓库
-   是否遵守“不编造编号”。
-3. 再考虑多场景拆分与 RP 圆桌模式（后者依赖外部 KiMo 引擎）；实现 Git Asset Provider
+   是否遵守“不编造编号”。备份解析器的落盘结构回归样本已在 v0.9.0 补齐
+   （`tests/fixtures/github-backup-sample/`），后续按上游格式变化滚动更新。
+2. 再考虑多场景拆分与 RP 圆桌模式（后者依赖外部 KiMo 引擎）；实现 Git Asset Provider
    前必须重新调研成熟 Git/归档依赖。
-4. AI Provider 继续后置，先明确服务条款快照、Prompt/seed 与 `LicenseRef-AI-*` 策略。
+3. AI Provider 继续后置，先明确服务条款快照、Prompt/seed 与 `LicenseRef-AI-*` 策略。

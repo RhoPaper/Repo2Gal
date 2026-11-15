@@ -42,7 +42,11 @@
 - 明确支持平台为 Linux/macOS/WSL2，原生 Windows 不受支持；部署文档写明 `VERCEL_TOKEN`
   与 `REPO2GAL_API_KEY` 必须是仓库级 secret（guard 与 Pages 流水线不在 production
   environment 内，environment secret 读不到会让部署静默跳过）；
-- 离线测试从 232 项扩充到 258 项，并新增版本同步守卫：`test_version.py` 检查 README、
+- 新增 `tests/fixtures/github-backup-sample/` 落盘结构回归样本：字段形状取自真实
+  `python-github-backup` 输出（Issue labels 对象数组、`comment_data`/`reply_data`、
+  Pull 的 `review_data`、Discussion 的 camelCase 键），内容为合成数据，固定三种模式
+  从同一份备份构建 `RepoContext` 的差异；
+- 离线测试从 232 项扩充到 261 项，并新增版本同步守卫：`test_version.py` 检查 README、
   CHANGELOG、AGENTS 与架构文档都带当前版本号，防止只改一个版本入口。
 
 ## v0.8.0 — 2026-09-13
