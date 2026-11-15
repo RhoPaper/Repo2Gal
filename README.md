@@ -11,7 +11,7 @@
 或用 **Quick Start（贡献者上手）** 模式生成带新人交第一个改动上手的剧本。
 剧情素材全部来自仓库的真实源码、README、Issue、PR、Discussion、wiki 与 Release。
 
-当前版本：v0.8.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
+当前版本：v0.9.0（版本历史见 [CHANGELOG.md](CHANGELOG.md)）。项目版本严格遵循
 [Semantic Versioning 2.0.0](https://semver.org/)，具体升级和同步规则见
 [CONTRIBUTING.md](CONTRIBUTING.md#版本管理)。
 
@@ -55,6 +55,7 @@ https://repo2gal.rhopaper.top/demo
 - [x] 确定性角色表白名单（Chronicle：项目化身 / 核心贡献者 / 技术栈精灵；
       Overview：项目向导 / 技术栈精灵；Quick Start：项目化身 / 维护者 / 技术栈精灵）
 - [x] 任意 OpenAI 兼容端点（`--base-url` / `--model` / 环境变量）
+- [x] 模型降级链：`--model a,b,c` 按顺序换模型，429/5xx 同模型重试、404 直接切换
 - [x] `--dry-run` / `--script` / `--save-prompt` 省钱与离线路径
 - [x] 导演 JSON 校验失败有界重试（默认 2 次）+ 草稿确定性兜底
 - [ ] RP 圆桌模式（`--rp`）：多角色独立上下文、以角色自身视角互动生成剧本，
@@ -91,7 +92,7 @@ https://repo2gal.rhopaper.top/demo
 
 - [x] 统一错误体系与退出码契约、错误信息脱敏
 - [x] 显式管线（pipeline）与可注入依赖，全流程可离线端到端测试
-- [x] 离线测试套件（232 项）
+- [x] 离线测试套件（258 项）
 - [x] 文档体系：用户指南、开发规约、Agent 指南、部署文档
 - [x] GitHub Actions 离线 CI 与 `main` 成功后自动生成/部署演示（需仓库 secrets）
 - [ ] python-github-backup 真实 fixture 回归样本
@@ -181,6 +182,17 @@ export REPO2GAL_BASE_URL=https://api.deepseek.com/v1
 export REPO2GAL_MODEL=deepseek-chat
 ```
 
+`--model` / `REPO2GAL_MODEL` 接受逗号分隔的模型链，首个为主模型，其余按顺序降级：
+
+```bash
+.venv/bin/repo2gal owner/repo --model deepseek-chat,deepseek-v4-pro
+# 等价写法：export REPO2GAL_MODEL=deepseek-chat,deepseek-v4-pro
+```
+
+同一模型内对 429/5xx 短暂重试（默认 2 次尝试、5 秒退避），模型不存在（404）不重试、
+直接切换下一个；最近成功过的模型会被提到链首。降级与重试会逐条打印，便于确认实际
+命中了哪个模型。
+
 ### 不花钱先看看
 
 ```bash
@@ -206,6 +218,10 @@ repo2gal vuejs/core --dry-run --script my_story.txt # 只校验剧本并打印�
 |---|---|---|---|
 | `chronicle`（默认） | 项目编年史：诞生、争论、社区演变 | 源码 + Issue/PR/Discussion + wiki + Release | `output/<repo>` |
 | `overview` | 仓库概览：定位、特性、安装用法、目录地图 | 源码 + wiki + Release | `output/<repo>-overview` |
+| `quickstart` | 贡献者上手：跑起来、代码地图、提交流程、第一个任务 | 源码 + Issue 与评论 + wiki | `output/<repo>-quickstart` |
+
+未显式传 `--mode` 时读取环境变量 `REPO2GAL_MODE`，仍为空则使用默认的 `chronicle`，
+便于 CI 或容器在无交互环境下选择剧本模式。
 
 `--strict` 在所有执行校验的路径生效：validator 存在任何降级即以退出码 5 结束。
 
@@ -241,7 +257,7 @@ GitHub REST metadata ─┘    筛选叙事素材   创作/批注/导演JSON   �
 | `asset_pack.py` | Asset Pack Schema、本地路径/授权/MIME/SHA/Profile 校验 |
 | `webgal_assets.py` | 逻辑 ID 映射、素材复制、脚本重写与第三方声明聚合 |
 | `performance.py` | 演出编译内核：能力表、profile、动作级 WebGAL 编译 |
-| `pipeline.py` | 流程编排唯一持有者：四模式矩阵、三轮生成与有界重试、阶段产物传递 |
+| `pipeline.py` | 流程编排唯一持有者：三模式（chronicle/overview/quickstart）矩阵、三轮生成与有界重试、阶段产物传递 |
 | `config.py` | 默认值、环境解析与路径常量单一来源 |
 | `errors.py` | 统一错误类型 → 退出码契约与集中脱敏 |
 | `cli.py` | 参数解析与结果渲染（不含流程逻辑） |

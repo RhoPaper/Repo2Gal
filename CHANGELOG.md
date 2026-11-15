@@ -4,6 +4,47 @@
 [Semantic Versioning 2.0.0](https://semver.org/)；`0.y.z` 阶段的新功能提升 `MINOR`，
 兼容缺陷修复提升 `PATCH`，公开不兼容变更至少提升 `MINOR`。
 
+## v0.9.0 — 2026-11-15
+
+**生成韧性、增量采集与跨仓库部署**：
+
+- 新增 LLM 模型降级链：`--model` 与 `REPO2GAL_MODEL` 接受逗号分隔的模型链，首个为主
+  模型、其余按顺序降级；同一模型内对 429/5xx 短暂重试（默认 2 次尝试、5 秒退避），
+  模型不存在（404）不重试直接切换，其余错误立即抛出；最近成功过的模型会被提到链首，
+  降级与重试过程逐条打印，便于确认实际命中了哪个模型。公开 API 相应调整：
+  `RunOptions.model` 变为 `models` 元组，`resolve_model` 变为 `resolve_model_chain`；
+- `--mode` 支持 `REPO2GAL_MODE` 环境变量：显式参数仍优先，未传时依次读环境变量与默认值
+  `chronicle`，CI 或容器里可以只靠环境变量选择剧本模式；
+- 增量备份补传 `--incremental-by-files`：已落盘且未变更的 Issue/PR 评论、评审、提交与
+  时间线直接沿用本地文件，列表请求仍每次执行以发现新实体；大仓库重复采集显著变短，
+  落盘结构不变；
+- GitHub Pages 部署流水线参数化：目标仓库、剧本模式、演出 profile、严格校验、超时与
+  采集 token 全部从仓库 variables/secrets 读取，workflow 不再包含项目特化信息，换目标
+  无需改文件；新增可选每日自动更新（`REPO2GAL_AUTO_UPDATE`，按目标仓库默认分支推进，
+  并用缓存记录上次生成的 revision）；
+- 新增 GitHub Pages 备选部署流水线并与 Vercel 并存：默认手动触发，只依赖 Actions 自带的
+  `github.token`，不读取 `VERCEL_TOKEN`；本仓库生产演示仍是 Vercel，Pages 是推荐给其它
+  项目开发者的路径；
+- 修复角色退场被 validator 误降级：编译内核用 `changeFigure:none` 实现 `figure.exit`，
+  该保留取值此前被判成“引用未声明或类型不匹配的素材”——非 strict 下角色不会退场，
+  `--strict` 下整次运行以退出码 5 失败。现在由 `webgal.RESERVED_ASSET_REFERENCES` 放行，
+  且只对 `changeFigure` 生效；
+- 修复导演环节的三类锚点与形状问题：草稿 `[B]` 锚点与台词同行时也能正确分块；第三轮
+  prompt 补齐每个动作 kind 的字段名清单与可照抄示例，并明确 `choices[].target` 与
+  `jump` 是裸字符串；`jump`/`target` 被写成 `{"target": "<id>"}` 时机械拆包并按 fix
+  记录，目标 id 是否存在仍由校验判定；
+- 导演 prompt 逐个标注角色表项是否有立绘，并写死“`figure.*` 只能使用有立绘角色、
+  同一角色先 `enter` 再 `move`/`exit`”，避免整份剧本因能力错误被打回；
+- 部署门禁：Vercel 线上内容比对改为轮询（最多 10 分钟）后判定、job 超时提到 60 分钟，
+  消除自定义域名切换滞后造成的假红；`Deploy Demo` 补 guard 事件条件，只有 main push
+  触发的 CI 成功才执行带生产 secrets 的 job；Pages 流水线给缓存保存加守卫，避免保存
+  失败拖住已生成的产物；
+- 明确支持平台为 Linux/macOS/WSL2，原生 Windows 不受支持；部署文档写明 `VERCEL_TOKEN`
+  与 `REPO2GAL_API_KEY` 必须是仓库级 secret（guard 与 Pages 流水线不在 production
+  environment 内，environment secret 读不到会让部署静默跳过）；
+- 离线测试从 232 项扩充到 258 项，并新增版本同步守卫：`test_version.py` 检查 README、
+  CHANGELOG、AGENTS 与架构文档都带当前版本号，防止只改一个版本入口。
+
 ## v0.8.0 — 2026-09-13
 
 **Quick Start（贡献者上手）模式**：

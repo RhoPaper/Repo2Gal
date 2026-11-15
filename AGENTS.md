@@ -13,7 +13,7 @@ Quick Start（贡献者上手）使用源码、README、目录树、贡献者入
 构建/测试入口、CI 工作流）与新人友好 Issue 生成“从跑起来到第一个改动”的上手视觉小说。
 不要擅自把 MVP 扩成通用 Galgame、RPG 或可视化 IDE。
 
-当前稳定基线为 `v0.8.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
+当前稳定基线为 `v0.9.0`：v0.1.0 主流程已于 2026-07-31 通过真实仓库、真实 LLM
 和 WebGAL 产物的端到端实测；v0.3.0 重构流程架构（显式管线 + 统一错误域 + 薄 CLI）；
 v0.4.0 实现 Asset Pack v1 本地单包闭环与内置 CC0 Chronicle 示例包；v0.5.0 实现显式
 Performance Plan v1 动态演出闭环；v0.6.0 实现仓库概览（Overview）模式；v0.6.1 修复
@@ -22,7 +22,9 @@ Overview 模式不使用旁白，向导台词全部由角色亲口说出；v0.7.
 （自由创作草稿 → 自然语言演出批注 → Director Plan JSON）+ 确定性编译 + 有界重试，
 合并原 `--performance` 通道并删除插入式合并；v0.8.0 新增 Quick Start（贡献者上手）模式，
 按模式选择 Issue 采集范围并确定性提取起步任务，并与 Overview 统一为“带路角色全程说话、
-不使用旁白”的剧本形态（config 的 `NARRATION_FREE_MODES` 是唯一来源）。
+不使用旁白”的剧本形态（config 的 `NARRATION_FREE_MODES` 是唯一来源）；v0.9.0 加入
+LLM 模型降级链与瞬时故障重试、`REPO2GAL_MODE` 环境变量与增量备份跳过未变更子资源，
+并把 GitHub Pages 部署流水线参数化为跨仓库可复用（本仓库生产演示仍是 Vercel）。
 
 项目版本严格遵循 SemVer 2.0.0。`0.y.z` 阶段兼容修复提升 PATCH，向后兼容新功能或公开
 不兼容变更提升 MINOR；`1.0.0` 后不兼容变更提升 MAJOR。发版必须同步 `pyproject.toml`、

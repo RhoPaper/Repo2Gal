@@ -80,6 +80,10 @@ GitHub 数据访问使用 Actions 自动提供的 `github.token`，不要另建�
 | `REPO2GAL_BASE_URL` | `https://api.deepseek.com/v1` |
 | `REPO2GAL_MODEL` | `deepseek-v4-pro` |
 
+`REPO2GAL_MODEL` 支持逗号分隔的模型链（如 `deepseek-chat,deepseek-v4-pro`）：首个为主
+模型，其余按顺序降级；同一模型内对 429/5xx 短暂重试（默认 2 次尝试、5 秒退避），404
+直接切换下一个。
+
 `VERCEL_SCOPE=rhopapers-projects` 和 `VERCEL_PROJECT=repo2gal-demo` 是公开项目标识，已固定在
 workflow 中，不属于 secret。
 
@@ -219,7 +223,7 @@ variables / secrets 读取。部署自己的项目时在 `Settings -> Secrets an
 | `REPO2GAL_AUTO_UPDATE` | variable | 关闭 | 设为 `true` 后按目标仓库推进每天自动更新 |
 | `REPO2GAL_TIMEOUT_MINUTES` | variable | `60` | 生成超时分钟数 |
 | `REPO2GAL_BASE_URL` | variable | `https://api.deepseek.com/v1` | OpenAI 兼容端点 |
-| `REPO2GAL_MODEL` | variable | `deepseek-v4-pro` | 模型名 |
+| `REPO2GAL_MODEL` | variable | `deepseek-v4-pro` | 模型名或逗号分隔的降级链 |
 | `REPO2GAL_API_KEY` | secret | 必填 | LLM API Key |
 | `REPO2GAL_SOURCE_TOKEN` | secret | `github.token` | 跨仓库采集用的只读 PAT |
 

@@ -2,17 +2,20 @@
 
 > 本文描述**当前实现和已锁定的边界**。历史设想放在 `docs/dev/early/`，不得把早期规划当成现状。
 
-当前基线：`v0.8.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
+当前基线：`v0.9.0`。Chronicle 主流程已于 2026-07-31 在真实 GitHub 仓库和真实 LLM
 环境中端到端实测通过。v0.4.0 落地 Asset Pack v1；v0.5.0 增加显式 Performance Plan
 动态演出；v0.6.0 新增仓库概览（Overview）模式；v0.6.1 修复旁白继承上一句 speaker 的问题；
 v0.6.2 明确 Overview 不使用旁白；v0.7.0 把剧本生成重构为三轮 LLM（自由创作草稿 →
 自然语言演出批注 → Director Plan JSON）+ 确定性编译 + 有界重试，合并原 Performance
 通道并删除插入式合并；v0.8.0 新增 Quick Start（贡献者上手）模式，按模式选择 Issue
 采集范围并确定性提取起步任务，同时把“不使用旁白”收敛为 config 的
-`NARRATION_FREE_MODES`。
+`NARRATION_FREE_MODES`；v0.9.0 增加 LLM 模型降级链与瞬时故障重试、`REPO2GAL_MODE`
+环境变量与增量采集优化，并把 GitHub Pages 部署流水线参数化为跨仓库可复用。
 
 版本号采用 SemVer 2.0.0；v0.7.0 删除 `--performance` 系列 CLI 参数并以三轮生成取代，
-属于公开不兼容变更；v0.8.0 新增 Quick Start 模式属于向后兼容的新功能，两者都提升 MINOR。
+属于公开不兼容变更；v0.8.0 新增 Quick Start 模式属于向后兼容的新功能；v0.9.0 新增
+LLM 模型降级链与 `REPO2GAL_MODE`，并把 `RunOptions.model` 改为 `models`，按 0.y.z 规则
+都提升 MINOR。
 完整升级与多文件同步规则见 `CONTRIBUTING.md`「版本管理」。
 
 ## 1. 产品定位
@@ -396,8 +399,14 @@ evidence 保存在 `third_party/asset-packs/`。
   `good first issue`/`help wanted`/`beginner` 等标签的 Issue）确定性提取；
   `RepoContext` 增加 `contributor_files` 与 `starter_issues`；Overview 与 Quick Start
   统一按 `NARRATION_FREE_MODES` 拒绝 narration 与无说话人的 choice 文本
+- v0.9.0：LLM 模型降级链（`--model`/`REPO2GAL_MODEL` 支持逗号分隔，429/5xx 同模型
+  重试、404 直接切换、最近成功模型提到链首；公开 API 改为 `RunOptions.models` 与
+  `resolve_model_chain`）；`--mode` 读取 `REPO2GAL_MODE`；增量备份补
+  `--incremental-by-files`；GitHub Pages 流水线参数化（仓库 variables/secrets 驱动，
+  可选定时更新），Vercel 仍是本仓库生产路径；validator 放行 `changeFigure:none`
+  保留取值，修复角色退场被误降级；导演 prompt 与 `jump` 形状修复
 
-`v0.8.0` 结论：Chronicle、Overview、Quick Start、单本地素材包闭环和动态演出均已实现；
+`v0.9.0` 结论：Chronicle、Overview、Quick Start、单本地素材包闭环和动态演出均已实现；
 多场景拆分、RP 圆桌模式与 Git/AI Provider 仍是计划，不得写成现有能力。
 
 三轮生成默认开启，三种剧本模式通用。第一轮只写故事（`[B]` 锚点），第二轮按 beat

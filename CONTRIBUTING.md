@@ -7,7 +7,7 @@
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest tests/ -q      # 188 项离线测试，数秒内完成
+.venv/bin/python -m pytest tests/ -q      # 258 项离线测试，数秒内完成
 ```
 
 CLI 冒烟（不联网、不花钱）：
@@ -58,7 +58,7 @@ Asset Pack 依赖的 `openat`/`O_NOFOLLOW` 在原生 Windows 上不存在，离�
 ```
 repo2gal/
 ├── cli.py         参数解析与结果渲染（薄层，不含流程）
-├── pipeline.py    流程编排：四模式矩阵、三轮生成 + 有界重试、RunOptions/RunArtifacts
+├── pipeline.py    流程编排：三模式（chronicle/overview/quickstart）矩阵、三轮生成 + 有界重试、RunOptions/RunArtifacts
 ├── fetcher.py     github-backup 适配 + 受控官方 REST 元数据 + RepoContext
 ├── generator.py   确定性选角、上下文渲染、第一轮创作 prompt 组装
 ├── director.py    草稿规范化、二/三轮 prompt、Director Plan 校验与确定性编译
