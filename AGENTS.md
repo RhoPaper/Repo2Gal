@@ -225,7 +225,7 @@ export REPO2GAL_API_KEY=sk_xxx
 网络测试应显式执行，普通单元测试必须离线。不得把真实 token、LLM 响应、完整第三方备份
 或生成产物提交到 Git；`.repo2gal/`、`output/`、`.venv/` 已忽略。
 
-**支持平台：Linux / macOS / WSL2。** CI 只有 `ubuntu-latest`，代码按 POSIX 假设编写
+**支持平台：Linux / macOS / WSL2。** CI 只有 `ubuntu-24.04`，代码按 POSIX 假设编写
 （Asset Pack 安全加载依赖 `openat`/`O_NOFOLLOW`）。原生 Windows 不在支持范围内，
 Windows 贡献者在 WSL2 内开发与测试。平台相关兼容补丁（`os.name == "nt"` 分支、locale
 编码兜底、路径分隔符改写等）不接受，除非同时把该平台纳入 CI 并有离线测试覆盖该分支。

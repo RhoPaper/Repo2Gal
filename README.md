@@ -112,7 +112,7 @@ python3 -m venv .venv
 
 ### 支持平台
 
-支持 Linux、macOS 与 WSL2，CI 在 `ubuntu-latest` 上运行离线测试。**原生 Windows 不在
+支持 Linux、macOS 与 WSL2，CI 在 `ubuntu-24.04` 上运行离线测试。**原生 Windows 不在
 支持范围内**：Asset Pack 的安全加载依赖 `openat`/`O_NOFOLLOW`，原生 Windows 上没有这些
 能力（默认 WebGAL 素材流程仍可用，但会拒绝 `--asset-pack`）。Windows 用户请在 WSL2 里
 安装与运行；平台相关兼容补丁需要同时把该平台纳入 CI 才会被接受。

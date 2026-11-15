@@ -39,6 +39,11 @@
   消除自定义域名切换滞后造成的假红；`Deploy Demo` 补 guard 事件条件，只有 main push
   触发的 CI 成功才执行带生产 secrets 的 job；Pages 流水线给缓存保存加守卫，避免保存
   失败拖住已生成的产物；
+- CI 与部署流水线升级到 Node.js 24 运行时：`checkout@v7`、`setup-python@v7`、
+  `setup-node@v7`、`cache@v6`（含 `restore`/`save`）、`upload-artifact@v7`、
+  `pnpm/action-setup@v6`、`configure-pages@v6`、`upload-pages-artifact@v5`、
+  `deploy-pages@v5`；runner 固定 `ubuntu-24.04`，避免 `ubuntu-latest` 迁移到
+  Ubuntu 26 造成构建漂移；
 - 明确支持平台为 Linux/macOS/WSL2，原生 Windows 不受支持；部署文档写明 `VERCEL_TOKEN`
   与 `REPO2GAL_API_KEY` 必须是仓库级 secret（guard 与 Pages 流水线不在 production
   environment 内，environment secret 读不到会让部署静默跳过）；

@@ -51,7 +51,7 @@ concurrency:
 jobs:
   plan:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 固定 LTS：ubuntu-latest 正在迁移到 Ubuntu 26
     outputs:
       target: ${{ steps.decide.outputs.target }}
       mode: ${{ steps.decide.outputs.mode }}
@@ -61,7 +61,7 @@ jobs:
       revision: ${{ steps.decide.outputs.revision }}
     steps:
       - name: Restore recorded revision
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .repo2gal-state
           key: repo2gal-pages-state-${{ github.run_id }}
@@ -122,7 +122,7 @@ jobs:
   deploy:
     needs: plan
     if: needs.plan.outputs.should_run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 固定 LTS：ubuntu-latest 正在迁移到 Ubuntu 26
     timeout-minutes: ${{ fromJSON(vars.REPO2GAL_TIMEOUT_MINUTES || '60') }}
     permissions:
       contents: read
@@ -140,7 +140,7 @@ jobs:
 
     steps:
       - name: Checkout successful commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.DEPLOY_SHA }}
 
@@ -154,7 +154,7 @@ jobs:
           }
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -169,13 +169,13 @@ jobs:
           .venv/bin/pip install -e .
 
       - name: Restore WebGAL template cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/repo2gal
           key: ${{ runner.os }}-repo2gal-webgal-4.6.2
 
       - name: Restore incremental GitHub backup
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .repo2gal/backups
           key: ${{ runner.os }}-repo2gal-backup-${{ github.run_id }}
@@ -212,7 +212,7 @@ jobs:
 
       - name: Upload generation audit
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: repo2gal-pages-${{ github.run_id }}
           retention-days: 30
@@ -233,19 +233,19 @@ jobs:
         # 只有真录到了 revision 才有目录可存；否则 actions/cache/save 会因路径不存在
         # 失败，而它排在发布步骤之前，会把已经生成好的产物一起拖住不发。
         if: needs.plan.outputs.revision != ''
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .repo2gal-state
           key: repo2gal-pages-state-${{ github.run_id }}
 
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: output/demo
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
